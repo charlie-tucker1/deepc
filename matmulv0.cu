@@ -2,12 +2,12 @@
 #include <cassert>
 #include <iostream>
 
-__global__ void matmulKernelRowFill(float *a, float *b, float *c,
+__global__ void matmulKernelSquare(float *a, float *b, float *c,
                                     unsigned int n) {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     if ((row < n) && (col < n)) {
-        float cVal = 0.0;
+        float cVal {0.0};
         for (int i = row; i < n; ++i) {
             cVal += a[row*n + i] * b[n*i + col];
         }
@@ -18,13 +18,13 @@ __global__ void matmulKernelRowFill(float *a, float *b, float *c,
 
 
 
-__host__ void init_matrices(float *mat, unsigned int bytes) {
+__host__ void init_matricesSquare(float *mat, unsigned int bytes) {
     for (unsigned int i = 0; i < bytes*bytes; i++) {
         mat[i] = rand() % 100;
     }
 }
 
-__host__ void verify_on_CPU(float *a, float *b, float *c, int N) {
+__host__ void verify_on_CPU_Square(float *a, float *b, float *c, int N) {
     float sum;
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < N; j++) {
@@ -74,7 +74,7 @@ int main() {
 
 
     //call matmul kernel
-    matmulKernelRowFill<<<dimGrid, dimBlock>>>(d_a, d_b, d_c, N);
+    matmulKernelSquare<<<dimGrid, dimBlock>>>(d_a, d_b, d_c, N);
 
 
     //send results back to host
@@ -82,7 +82,7 @@ int main() {
 
 
     //check result
-    verify_on_CPU(a_h, b_h, c_h, N);
+    verify_on_CPU_Square(a_h, b_h, c_h, N);
 
     std::cout << "Matrix Multiplication OK" << "\n";
     free(a_h);
