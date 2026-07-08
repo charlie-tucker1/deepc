@@ -4,7 +4,7 @@
 
 
 
-using Scalar = float64_t;
+using Scalar = double;
 
 
 struct Value {
@@ -63,7 +63,7 @@ void backwards(Value* L, const std::vector<Value*>& tape) {
 
 }
 
-
+/*
 int main() {
     Value* a = leaf(2.0);
     Value* b = leaf(3.0);
@@ -80,3 +80,4 @@ int main() {
            a->grad, b->grad, k->grad, m->grad, c->grad, d->grad, e->grad, L->grad);
     return 0;
 }
+*/
