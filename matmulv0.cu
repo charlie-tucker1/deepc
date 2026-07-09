@@ -40,7 +40,7 @@ __host__ void verify_on_CPU_Square(float *a, float *b, float *c, int N) {
 
 int main() {
     int N = 1024;
-    size_t bytes = N * N * sizeof(int);
+    size_t bytes = N * N * sizeof(float);
 
 
     //Host pointers + memory
