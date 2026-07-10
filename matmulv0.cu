@@ -3,15 +3,15 @@
 #include <iostream>
 
 __global__ void matmulKernelSquare(float *a, float *b, float *c,
-                                    unsigned int n) {
+                                    unsigned int width) {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     int row = blockIdx.y * blockDim.y + threadIdx.y;
-    if ((row < n) && (col < n)) {
+    if ((row < width) && (col < width)) {
         float cVal {0.0};
-        for (int i = row; i < n; ++i) {
-            cVal += a[row*n + i] * b[n*i + col];
+        for (int i = row; i < width; ++i) {
+            cVal += a[row*width + i] * b[width*i + col];
         }
-        c[row * n + col] = cVal;
+        c[row * width + col] = cVal;
     }
 
 }
@@ -37,7 +37,7 @@ __host__ void verify_on_CPU_Square(float *a, float *b, float *c, int N) {
     }
 }
 
-
+/*
 int main() {
     int N = 1024;
     size_t bytes = N * N * sizeof(float);
@@ -97,3 +97,4 @@ int main() {
     return 0;
 
 }
+*/
