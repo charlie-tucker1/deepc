@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <functional>
+#include <deque>
 
 
 
@@ -9,19 +10,18 @@ using Scalar = double;
 
 struct Value {
 
-    Scalar data;
+    Scalar data {0.0};
     Scalar grad {0.0};
-    int pending = 0;
+    int pending {0};
 
     std::vector<Value*> prev;
     std::function<void()> backward;
 };
 
-std::vector<Value*> tape;
+
 
 Value* leaf(double x) {
     Value* v = new Value{x};
-    tape.push_back(v);
     return v;
 }
 
@@ -34,36 +34,64 @@ Value* mul(Value* a, Value* b) {
         a->grad += b->data * out->grad;
         b->grad += a->data * out->grad;
     };
-    tape.push_back(out);
     return out;
 }
 
 
-void backwards(Value* L, const std::vector<Value*>& tape) {
+
+void backwards(Value* L) {
     L->grad = 1.0;
-    std::vector<Value*> ready;
-    for (Value * v : tape) {
-        if (!(v->pending)) {
-        ready.push_back(v);}
-    }
+    std::deque<Value*> ready = {L};
     while (!ready.empty()) {
-        Value* t = ready.back();
-        ready.pop_back();
-
-        if (t->backward) t->backward();
-
-        for (Value* p : t->prev) {
+        Value* node = ready.front(); ready.pop_front();
+        if (node->backward) node->backward();
+        for (Value* p : node->prev) {
             p->pending--;
-            if (!p->pending) {
-                ready.push_back(p);
-            }
+            if (p->pending == 0) ready.push_back(p);
         }
-
     }
-
 }
 
-/*
+
+struct Graph {
+    Value* L;
+    std::vector<Value*> leaves;
+};
+
+bool compare_grad(double a, double n) {
+    const double atol = 1e-8;
+    const double rtol = 1e-5;
+    return std::abs(a - n) < atol + rtol * std::max(std::abs(a), std::abs(n));
+}
+
+
+bool gradcheck(std::function<Graph(const std::vector<double>&)> build,
+               std::vector<double> xs)
+{
+    const double h = 1e-5;                       // error floor
+
+    // ---- analytic side: fresh graph #1, then let the engine do its thing ----
+    Graph g = build(xs);                         // BUILD CALL. Fresh nodes, virgin pendings.
+    backwards(g.L);                               // fills every leaf's ->grad via chain rule
+
+    bool all_ok = true;
+    for (size_t i = 0; i < xs.size(); ++i) {
+        // ---- numeric side for leaf i: two MORE fresh graphs, forward-only ----
+        std::vector<double> xph = xs;  xph[i] += h;
+        std::vector<double> xmh = xs;  xmh[i] -= h;
+        double f_plus  = build(xph).L->data;      // BUILD CALL. backward never runs here.
+        double f_minus = build(xmh).L->data;      // BUILD CALL. We only want the number.
+        double numeric  = (f_plus - f_minus) / (2 * h);   // parens on BOTH groups
+        double analytic = g.leaves[i]->grad;     // calculus's answer, from graph #1
+
+        bool ok = compare_grad(analytic, numeric);          // NUMBERS compared. Not graphs.
+        all_ok = all_ok && ok;
+        printf("leaf %zu:  analytic % .12f   numeric % .12f   %s\n",
+               i, analytic, numeric, ok ? "PASS" : "FAIL");
+    }
+    return all_ok;    // TODO: every build() leaks its graph, fix before moving to tensors
+}
+
 int main() {
     Value* a = leaf(2.0);
     Value* b = leaf(3.0);
@@ -74,10 +102,22 @@ int main() {
     Value* e = mul(c, m);
     Value* L = mul(d, e);
 
-    backwards(L, tape);
+    backwards(L);
 
-    printf("a %g  b %g  k %g  m %g\nc %g  d %g  e %g  L %g\n",
-           a->grad, b->grad, k->grad, m->grad, c->grad, d->grad, e->grad, L->grad);
-    return 0;
+    auto build = [](const std::vector<double>& xs) {
+        Value* a_check = new Value{xs[0]};
+        Value* b_check = new Value{xs[1]};
+        Value* k_check = new Value{xs[2]};
+        Value* m_check = new Value{xs[3]};
+        Value* c_check = mul(a_check, b_check);
+        Value* d_check = mul(c_check, k_check);
+        Value* e_check = mul(c_check, m_check);
+        Value* L_check = mul(d_check, e_check);
+        return Graph{L_check, {a_check, b_check, k_check, m_check}};
+    };
+
+    bool ok = gradcheck(build, {2.0, 3.0, 4.0, 5.0});
+
+
+    return ok;
 }
-*/
