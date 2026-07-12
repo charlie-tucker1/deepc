@@ -70,21 +70,21 @@ bool gradcheck(std::function<Graph(const std::vector<double>&)> build,
 {
     const double h = 1e-5;                       // error floor
 
-    // ---- analytic side: fresh graph #1, then let the engine do its thing ----
-    Graph g = build(xs);                         // BUILD CALL. Fresh nodes, virgin pendings.
+    // ---- analytic side:
+    Graph g = build(xs);                         // BUILD CALL. Fresh nodes, pendings
     backwards(g.L);                               // fills every leaf's ->grad via chain rule
 
     bool all_ok = true;
     for (size_t i = 0; i < xs.size(); ++i) {
-        // ---- numeric side for leaf i: two MORE fresh graphs, forward-only ----
+        // ---- numeric side for leaf i:
         std::vector<double> xph = xs;  xph[i] += h;
         std::vector<double> xmh = xs;  xmh[i] -= h;
-        double f_plus  = build(xph).L->data;      // BUILD CALL. backward never runs here.
-        double f_minus = build(xmh).L->data;      // BUILD CALL. We only want the number.
-        double numeric  = (f_plus - f_minus) / (2 * h);   // parens on BOTH groups
-        double analytic = g.leaves[i]->grad;     // calculus's answer, from graph #1
+        double f_plus  = build(xph).L->data;
+        double f_minus = build(xmh).L->data;
+        double numeric  = (f_plus - f_minus) / (2 * h);
+        double analytic = g.leaves[i]->grad;
 
-        bool ok = compare_grad(analytic, numeric);          // NUMBERS compared. Not graphs.
+        bool ok = compare_grad(analytic, numeric);
         all_ok = all_ok && ok;
         printf("leaf %zu:  analytic % .12f   numeric % .12f   %s\n",
                i, analytic, numeric, ok ? "PASS" : "FAIL");
