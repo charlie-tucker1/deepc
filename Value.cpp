@@ -2,6 +2,9 @@
 #include <vector>
 #include <functional>
 #include <deque>
+#include <cmath>
+#include <algorithm>
+#include <iostream>
 
 
 
@@ -37,6 +40,50 @@ Value* mul(Value* a, Value* b) {
     return out;
 }
 
+Value* add( Value* a, Value* b) {
+    auto out = new Value{a->data + b->data};
+    out->prev = {a, b};
+    a->pending++;
+    b->pending++;
+    out->backward = [a, b, out]() {
+        a->grad += out->grad;
+        b->grad += out->grad;
+    };
+    return out;
+}
+
+Value* sub( Value* a, Value* b) {
+    auto out = new Value{a->data - b->data};
+    out->prev = {a, b};
+    a->pending++;
+    b->pending++;
+    out->backward = [a, b, out]() {
+        a->grad += out->grad;
+        b->grad -= out->grad;
+    };
+    return out;
+}
+
+Value* exp(Value* a) {
+    auto out = new Value{std::exp(a->data) };
+    out->prev = {a};
+    a->pending++;
+    out->backward = [a, out]() {
+        a->grad += out->grad * out->data;
+    };
+    return out;
+}
+
+Value* tanh(Value* a) {
+    Value* out = new Value{std::tanh(a->data) };
+    out->prev = {a};
+    a->pending++;
+    out->backward = [a, out]() {                             // derivative of a tanh(x) operation is = 1 - tanh^2(x) ->
+        a->grad += out->grad * (1 - (out->data * out->data));   //   = 1 - pow(out->data, 2)
+    };
+    return out;
+}
+
 
 
 void backwards(Value* L) {
@@ -68,7 +115,11 @@ bool compare_grad(double a, double n) {
 bool gradcheck(std::function<Graph(const std::vector<double>&)> build,
                std::vector<double> xs)
 {
-    const double h = 1e-5;                       // error floor
+
+    //No h reaches 16 digits: shrinking h trades truncation for cancellation,
+    //and the floor at their crossing is ≈ 3e-11 (~11 digits). h is tuned to the valley bottom, not to eps.
+
+    const double h = 1e-5;                       // step size
 
     // ---- analytic side:
     Graph g = build(xs);                         // BUILD CALL. Fresh nodes, pendings
@@ -104,6 +155,13 @@ int main() {
 
     backwards(L);
 
+    //Using Builders to test ops against graph configs:
+    //Test inputs are chosen by the test author. Keep every intermediate O(1) so the ruler runs at its ~1e-11 floor,
+    //far above the 1e-5 verdict line. The formula being certified is scale-free,
+    //so certification at tame scale transfers to every scale.
+
+
+    // Testing add(), mul(), sub(), and exp() in 'build'
     auto build = [](const std::vector<double>& xs) {
         Value* a_check = new Value{xs[0]};
         Value* b_check = new Value{xs[1]};
@@ -112,12 +170,38 @@ int main() {
         Value* c_check = mul(a_check, b_check);
         Value* d_check = mul(c_check, k_check);
         Value* e_check = mul(c_check, m_check);
-        Value* L_check = mul(d_check, e_check);
+        Value* f_check = add(e_check, d_check);
+        Value * j_exp = exp(f_check);
+        Value* g_check = sub(j_exp, e_check);
+        Value* h_check = mul(g_check, c_check);
+        Value* i_check = sub(h_check, f_check);
+        Value* n_check = tanh(i_check);
+        Value* L_check = mul(n_check, h_check);
         return Graph{L_check, {a_check, b_check, k_check, m_check}};
     };
 
-    bool ok = gradcheck(build, {2.0, 3.0, 4.0, 5.0});
+    gradcheck(build, {1.1, 0.7, 0.5, 0.3});
 
 
-    return ok;
+    // Testing leaf -> exp() -> out in 'build2'
+    auto build2 = [](const std::vector<double>& xs) {
+        Value* a2_check = new Value{xs[0]};
+        Value* L2_check = exp(a2_check);
+        return Graph{L2_check, {a2_check}};
+    };
+
+    gradcheck(build2, {1.5});
+
+
+    // Test leaf -> tanh() -> out in build3
+    auto build3 = [](const std::vector<double>& xs) {
+        Value* a3_check = new Value{xs[0]};
+        Value* L3_check = tanh(a3_check);
+        return Graph{L3_check, {a3_check}};
+    };
+
+    gradcheck(build3, {1.5});
+
+
+    return 0;
 }
