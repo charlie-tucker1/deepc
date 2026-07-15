@@ -4,32 +4,49 @@
 #include <deque>
 #include <cmath>
 #include <algorithm>
-#include <iostream>
+#include <cstdio>
+#include <memory>
+#include <cassert>
 
 
 
 using Scalar = double;
 
 
+
+
+
 struct Value {
 
-    Scalar data {0.0};
+    Value(double x) : data{x} {alive++;}
+    Scalar data;
     Scalar grad {0.0};
     int pending {0};
 
     std::vector<Value*> prev;
     std::function<void()> backward;
+
+    inline static int alive = 0;
+
+    ~Value(){ alive--;}
+
+};
+
+
+class GraphContext {
+public :
+    std::vector<std::unique_ptr<Value>> nodes;
+
+    Value* make(double data) {
+        nodes.emplace_back(std::make_unique<Value>(data));
+        return nodes.back().get();
+    }
 };
 
 
 
-Value* leaf(double x) {
-    Value* v = new Value{x};
-    return v;
-}
-
-Value* mul(Value* a, Value* b) {
-    auto out = new Value{a->data * b->data};
+Value* mul(GraphContext& ctx, Value* a, Value* b) {
+    Value* out = ctx.make(a->data * b->data);
     out->prev = {a, b};
     a->pending++;                       // out consumes a
     b->pending++;                       // out consumes b
@@ -40,8 +57,8 @@ Value* mul(Value* a, Value* b) {
     return out;
 }
 
-Value* add( Value* a, Value* b) {
-    auto out = new Value{a->data + b->data};
+Value* add(GraphContext& ctx, Value* a, Value* b) {
+    Value* out = ctx.make(a->data + b->data);
     out->prev = {a, b};
     a->pending++;
     b->pending++;
@@ -52,8 +69,8 @@ Value* add( Value* a, Value* b) {
     return out;
 }
 
-Value* sub( Value* a, Value* b) {
-    auto out = new Value{a->data - b->data};
+Value* sub(GraphContext& ctx, Value* a, Value* b) {
+    Value* out = ctx.make(a->data - b->data);
     out->prev = {a, b};
     a->pending++;
     b->pending++;
@@ -64,8 +81,8 @@ Value* sub( Value* a, Value* b) {
     return out;
 }
 
-Value* exp(Value* a) {
-    auto out = new Value{std::exp(a->data) };
+Value* exp(GraphContext& ctx, Value* a) {
+    Value* out = ctx.make(std::exp(a->data) );
     out->prev = {a};
     a->pending++;
     out->backward = [a, out]() {
@@ -74,8 +91,8 @@ Value* exp(Value* a) {
     return out;
 }
 
-Value* div(Value* a, Value* b) {
-    auto out = new Value{a->data / b->data};
+Value* div(GraphContext& ctx, Value* a, Value* b) {
+    Value* out = ctx.make(a->data / b->data);
     out->prev = {a, b};
     a->pending++;
     b->pending++;
@@ -86,8 +103,8 @@ Value* div(Value* a, Value* b) {
     return out;
 }
 
-Value* log(Value* a) {
-    auto out = new Value{std::log(a->data) };
+Value* log(GraphContext& ctx, Value* a) {
+    Value* out = ctx.make(std::log(a->data));
     out->prev = {a};
     a->pending++;
     out->backward = [a, out]() {
@@ -96,8 +113,8 @@ Value* log(Value* a) {
     return out;
 }
 
-Value* pow(Value* a, double raise) {
-    auto out = new Value{std::pow(a->data, raise) };
+Value* pow(GraphContext& ctx, Value* a, double raise) {
+    Value* out = ctx.make(std::pow(a->data, raise) );
     out->prev = {a};
     a->pending++;
     out->backward = [a, raise, out]() {
@@ -107,8 +124,8 @@ Value* pow(Value* a, double raise) {
 }
 
 
-Value* tanh(Value* a) {
-    Value* out = new Value{std::tanh(a->data) };
+Value* tanh(GraphContext& ctx, Value* a) {
+    Value* out = ctx.make(std::tanh(a->data));
     out->prev = {a};
     a->pending++;
     out->backward = [a, out]() {                             // derivative of a tanh(x) operation is = 1 - tanh^2(x) ->
@@ -117,24 +134,22 @@ Value* tanh(Value* a) {
     return out;
 }
 
-Value* relu(Value* a) {
-    Value* out = new Value;
+Value* relu(GraphContext& ctx, Value* a) {
+    Value* out = ctx.make(a->data > 0 ? a->data : 0.0);
     out->prev = {a};
     a->pending++;
-    if (a->data > 0) {           //derivative = 1 if a->data > 0, derivative is 0.0 if a->data <= 0
-        out->data = a->data;
+    if (out->data) {           //derivative = 1 if a->data > 0, derivative is 0.0 if a->data <= 0
         out->backward = [a, out]() {
             a->grad += out->grad;
         };
         return out;
     }
-    else {
-        out->data = 0.0;
-        out->backward = [a, out]() {
-            a->grad += 0;
-        };
-        return out;
-    }
+
+    out->backward = [a, out]() {
+        a->grad += 0;
+    };
+    return out;
+
 }
 
 
@@ -153,6 +168,7 @@ void backwards(Value* L) {
 }
 
 
+
 struct Graph {
     Value* L;
     std::vector<Value*> leaves;
@@ -165,7 +181,7 @@ bool compare_grad(double a, double n) {
 }
 
 
-bool gradcheck(std::function<Graph(const std::vector<double>&)> build,
+bool gradcheck(std::function<Graph(GraphContext&, const std::vector<double>&)> build,
                std::vector<double> xs)
 {
 
@@ -175,7 +191,8 @@ bool gradcheck(std::function<Graph(const std::vector<double>&)> build,
     const double h = 1e-5;                       // step size
 
     // ---- analytic side:
-    Graph g = build(xs);                         // BUILD CALL. Fresh nodes, pendings
+    GraphContext gc_ctx;
+    Graph g = build(gc_ctx, xs);                         // BUILD CALL. Fresh nodes, pendings
     backwards(g.L);                              // fills every leaf's ->grad via chain rule
 
     bool all_ok = true;
@@ -183,8 +200,18 @@ bool gradcheck(std::function<Graph(const std::vector<double>&)> build,
         // ---- numeric side for leaf i:
         std::vector<double> xph = xs;  xph[i] += h;
         std::vector<double> xmh = xs;  xmh[i] -= h;
-        double f_plus  = build(xph).L->data;
-        double f_minus = build(xmh).L->data;
+
+        double f_plus;
+        {
+            GraphContext plus_ctx;
+            f_plus  = build(plus_ctx, xph).L->data;
+        }
+
+        double f_minus;
+        {
+            GraphContext minus_ctx;
+            f_minus  = build(minus_ctx, xmh).L->data;
+        }
         double numeric  = (f_plus - f_minus) / (2 * h);
         double analytic = g.leaves[i]->grad;
 
@@ -193,8 +220,11 @@ bool gradcheck(std::function<Graph(const std::vector<double>&)> build,
         printf("leaf %zu:  analytic % .12f   numeric % .12f   %s\n",
                i, analytic, numeric, ok ? "PASS" : "FAIL");
     }
-    return all_ok;    // TODO: every build() leaks its graph, fix before moving to tensors
+    return all_ok;
 }
+
+
+
 
 int main() {
 
@@ -207,57 +237,67 @@ int main() {
 
 
     // Testing add(), mul(), sub(), and exp() in 'build'
-    auto build = [](const std::vector<double>& xs) {
-        Value* a_check = new Value{xs[0]};
-        Value* b_check = new Value{xs[1]};
-        Value* k_check = new Value{xs[2]};
-        Value* m_check = new Value{xs[3]};
-        Value* c_check = mul(a_check, b_check);
-        Value* d_check = mul(c_check, k_check);
-        Value* e_check = mul(c_check, m_check);
-        Value* f_check = add(e_check, d_check);
-        Value* j_exp = exp(f_check);
-        Value* g_check = sub(j_exp, e_check);
-        Value* pow_check = pow(g_check, 2.5);
-        Value* h_check = mul(g_check, pow_check);
-        Value* i_check = div(h_check, f_check);
-        Value* n_check = log(i_check);
-        Value* o_relu = relu(h_check);
-        Value* L_check = mul(o_relu, n_check);
+    auto build = [](GraphContext& ctx, const std::vector<double>& xs) {
+        Value* a_check = ctx.make(xs[0]);
+        Value* b_check = ctx.make(xs[1]);
+        Value* k_check = ctx.make(xs[2]);
+        Value* m_check = ctx.make(xs[3]);
+        Value* c_check = mul(ctx, a_check, b_check);
+        Value* d_check = mul(ctx, c_check, k_check);
+        Value* e_check = mul(ctx, c_check, m_check);
+        Value* f_check = add(ctx, e_check, d_check);
+        Value* j_exp = exp(ctx, f_check);
+        Value* g_check = sub(ctx, j_exp, e_check);
+        Value* pow_check = pow(ctx, g_check, 2.5);
+        Value* h_check = mul(ctx, g_check, pow_check);
+        Value* i_check = div(ctx, h_check, f_check);
+        Value* n_check = log(ctx, i_check);
+        Value* o_relu = relu(ctx, h_check);
+        Value* L_check = mul(ctx, o_relu, n_check);
         return Graph{L_check, {a_check, b_check, k_check, m_check}};
     };
 
     gradcheck(build, {1.1, 0.7, 0.5, 0.3});
 
+    assert(Value::alive == 0);
 
     // Testing leaf -> exp() -> out in 'build2'
-    auto build2 = [](const std::vector<double>& xs) {
-        Value* a2_check = new Value{xs[0]};
-        Value* L2_check = exp(a2_check);
+    auto build2 = [](GraphContext& ctx2,  const std::vector<double>& xs) {
+        Value* a2_check = ctx2.make(xs[0]);
+        Value* L2_check = exp(ctx2, a2_check);
         return Graph{L2_check, {a2_check}};
     };
 
     gradcheck(build2, {1.5});
 
+    assert(Value::alive == 0);
 
     // Test leaf -> tanh() -> out in build3
-    auto build3 = [](const std::vector<double>& xs) {
-        Value* a3_check = new Value{xs[0]};
-        Value* L3_check = tanh(a3_check);
+    auto build3 = [](GraphContext& ctx3, const std::vector<double>& xs) {
+        Value* a3_check = ctx3.make(xs[0]);
+        Value* L3_check = tanh(ctx3, a3_check);
         return Graph{L3_check, {a3_check}};
     };
 
     gradcheck(build3, {1.5});
 
-    auto build4 = [](const std::vector<double>& xs) {
-        Value* a4_check = new Value{xs[0]};
-        Value* L4_check = relu(a4_check);
+    assert(Value::alive == 0);
+
+    auto build4 = [](GraphContext& ctx4, const std::vector<double>& xs) {
+        Value* a4_check = ctx4.make(xs[0]);
+        Value* L4_check = relu(ctx4, a4_check);
         return Graph{L4_check, {a4_check}};
     };
 
     // test is inaccurate where x=0 & grad = 0
     gradcheck(build4, {1.5});
+
+    assert(Value::alive == 0);
+
     gradcheck(build4, {-1.5});
+
+    assert(Value::alive == 0);
 
     return 0;
 }
+
