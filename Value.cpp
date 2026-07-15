@@ -74,6 +74,39 @@ Value* exp(Value* a) {
     return out;
 }
 
+Value* div(Value* a, Value* b) {
+    auto out = new Value{a->data / b->data};
+    out->prev = {a, b};
+    a->pending++;
+    b->pending++;
+    out->backward = [a, b, out]() {
+        a->grad += out->grad * (1.0 / b->data);
+        b->grad += out->grad * (-(a->data) / (b->data * b->data));
+    };
+    return out;
+}
+
+Value* log(Value* a) {
+    auto out = new Value{std::log(a->data) };
+    out->prev = {a};
+    a->pending++;
+    out->backward = [a, out]() {
+        a->grad += out->grad * (1.0 / a->data);
+    };
+    return out;
+}
+
+Value* pow(Value* a, double raise) {
+    auto out = new Value{std::pow(a->data, raise) };
+    out->prev = {a};
+    a->pending++;
+    out->backward = [a, raise, out]() {
+        a->grad += out->grad * raise * std::pow(a->data, raise - 1);
+    };
+    return out;
+}
+
+
 Value* tanh(Value* a) {
     Value* out = new Value{std::tanh(a->data) };
     out->prev = {a};
@@ -82,6 +115,26 @@ Value* tanh(Value* a) {
         a->grad += out->grad * (1 - (out->data * out->data));   //   = 1 - pow(out->data, 2)
     };
     return out;
+}
+
+Value* relu(Value* a) {
+    Value* out = new Value;
+    out->prev = {a};
+    a->pending++;
+    if (a->data > 0) {           //derivative = 1 if a->data > 0, derivative is 0.0 if a->data <= 0
+        out->data = a->data;
+        out->backward = [a, out]() {
+            a->grad += out->grad;
+        };
+        return out;
+    }
+    else {
+        out->data = 0.0;
+        out->backward = [a, out]() {
+            a->grad += 0;
+        };
+        return out;
+    }
 }
 
 
@@ -123,7 +176,7 @@ bool gradcheck(std::function<Graph(const std::vector<double>&)> build,
 
     // ---- analytic side:
     Graph g = build(xs);                         // BUILD CALL. Fresh nodes, pendings
-    backwards(g.L);                               // fills every leaf's ->grad via chain rule
+    backwards(g.L);                              // fills every leaf's ->grad via chain rule
 
     bool all_ok = true;
     for (size_t i = 0; i < xs.size(); ++i) {
@@ -144,16 +197,8 @@ bool gradcheck(std::function<Graph(const std::vector<double>&)> build,
 }
 
 int main() {
-    Value* a = leaf(2.0);
-    Value* b = leaf(3.0);
-    Value* k = leaf(4.0);
-    Value* m = leaf(5.0);
-    Value* c = mul(a, b);
-    Value* d = mul(c, k);
-    Value* e = mul(c, m);
-    Value* L = mul(d, e);
 
-    backwards(L);
+
 
     //Using Builders to test ops against graph configs:
     //Test inputs are chosen by the test author. Keep every intermediate O(1) so the ruler runs at its ~1e-11 floor,
@@ -171,12 +216,14 @@ int main() {
         Value* d_check = mul(c_check, k_check);
         Value* e_check = mul(c_check, m_check);
         Value* f_check = add(e_check, d_check);
-        Value * j_exp = exp(f_check);
+        Value* j_exp = exp(f_check);
         Value* g_check = sub(j_exp, e_check);
-        Value* h_check = mul(g_check, c_check);
-        Value* i_check = sub(h_check, f_check);
-        Value* n_check = tanh(i_check);
-        Value* L_check = mul(n_check, h_check);
+        Value* pow_check = pow(g_check, 2.5);
+        Value* h_check = mul(g_check, pow_check);
+        Value* i_check = div(h_check, f_check);
+        Value* n_check = log(i_check);
+        Value* o_relu = relu(h_check);
+        Value* L_check = mul(o_relu, n_check);
         return Graph{L_check, {a_check, b_check, k_check, m_check}};
     };
 
@@ -202,6 +249,15 @@ int main() {
 
     gradcheck(build3, {1.5});
 
+    auto build4 = [](const std::vector<double>& xs) {
+        Value* a4_check = new Value{xs[0]};
+        Value* L4_check = relu(a4_check);
+        return Graph{L4_check, {a4_check}};
+    };
+
+    // test is inaccurate where x=0 & grad = 0
+    gradcheck(build4, {1.5});
+    gradcheck(build4, {-1.5});
 
     return 0;
 }
