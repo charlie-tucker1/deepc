@@ -33,6 +33,7 @@ struct Value {
 };
 
 
+
 class GraphContext {
 public :
     std::vector<std::unique_ptr<Value>> nodes;
@@ -42,6 +43,8 @@ public :
         return nodes.back().get();
     }
 };
+
+
 
 
 
