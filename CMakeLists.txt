@@ -19,3 +19,4 @@ add_executable(deepc
 
 )
 target_link_libraries(deepc PRIVATE CUDA::cudart)
+target_compile_definitions(deepc PRIVATE DEEPC_DATA_DIR="${CMAKE_SOURCE_DIR}/data")

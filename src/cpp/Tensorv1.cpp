@@ -8,7 +8,12 @@
 #include <memory>
 #include <cassert>
 #include <random>
-#include "/home/charlietucker/CLionProjects/deepc/src/headers/mnist_loader.h"
+#include "../headers/mnist_loader.h"
+
+// Set by CMake to <repo>/data; falls back to running from the repo root
+#ifndef DEEPC_DATA_DIR
+#define DEEPC_DATA_DIR "data"
+#endif
 #include <filesystem>
 #include <chrono>
 
@@ -351,8 +356,8 @@ int main() {
 
 // Load MNIST dataset:
 
-    auto mnist = load_mnist("/home/charlietucker/CLionProjects/deepc/data/MNIST_data/train-images.idx3-ubyte",
-                            "/home/charlietucker/CLionProjects/deepc/data/MNIST_data/train-labels.idx1-ubyte");
+    auto mnist = load_mnist(DEEPC_DATA_DIR "/MNIST_data/train-images.idx3-ubyte",
+                            DEEPC_DATA_DIR "/MNIST_data/train-labels.idx1-ubyte");
 
     std::cout << "Loaded " << mnist.images.size() << " images\n";
     std::cout << "Rows: " << mnist.rows << ", Cols: " << mnist.cols << "\n";
@@ -404,8 +409,8 @@ std::cout << "Elapsed time: " << elapsed_ms.count() << " ms\n";
 
     auto start_infer = std::chrono::steady_clock::now();
     int test_examples = 10000;
-    auto mnist_test = load_mnist("/home/charlietucker/CLionProjects/deepc/data/MNIST_data/t10k-images.idx3-ubyte",
-                            "/home/charlietucker/CLionProjects/deepc/data/MNIST_data/t10k-labels.idx1-ubyte");
+    auto mnist_test = load_mnist(DEEPC_DATA_DIR "/MNIST_data/t10k-images.idx3-ubyte",
+                            DEEPC_DATA_DIR "/MNIST_data/t10k-labels.idx1-ubyte");
 
 std::cout << "Starting inference on " << test_examples << " examples\n";
 
