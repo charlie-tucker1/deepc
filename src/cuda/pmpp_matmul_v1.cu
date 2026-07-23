@@ -84,7 +84,7 @@ __host__ void verify_on_CPU_Square(float *a, float *b, float *c, int N) {
         }
     }
 }
-
+/*
 int main() {
 
     //Specify Matrix & Vector sizes (1024)
@@ -247,7 +247,7 @@ int main() {
 
     // Vec Mat mul:
 
-    /*
+
     cudaEventRecord(start_vecMM, 0); // start recording event vec_MM
 
     matvec<<<dimGrid, dimBlock>>>(d_A, d_x, d_y, width); //Run vec_MM kernel
@@ -265,7 +265,7 @@ int main() {
     std::cout << "Row-MatMul OK\n";
 
     std::cout << "it took " << ElapsedTime_Ms << " for the vector MatMul\n";
-    */
+
 
 
 
@@ -294,4 +294,4 @@ int main() {
 
 
 }
-
+*/

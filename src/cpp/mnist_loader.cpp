@@ -1,4 +1,4 @@
-#include "mnist_loader.h"
+#include "/home/charlietucker/CLionProjects/deepc/src/headers/mnist_loader.h"
 #include <fstream>
 #include <stdexcept>
 
