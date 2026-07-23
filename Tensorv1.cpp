@@ -7,12 +7,14 @@
 #include <cstdio>
 #include <memory>
 #include <cassert>
+#include <random>
 
 
 
 
 
 struct Tensor {
+    inline static int alive {0}; // for debugging / detecting mem leaks
 
     Tensor(int rows, int cols) : rows{rows}, cols{cols},
         data{std::make_unique<double[]>(rows * cols)},
@@ -21,42 +23,61 @@ struct Tensor {
         alive++;
     }
 
-
-    inline static int alive {0};
-
     int rows, cols;
     std::unique_ptr<double[]> data;
     std::unique_ptr<double[]> grad;
 
-
     int pending {0};
 
     std::vector<Tensor*> prev;
-
     std::function<void()> backward;
+
+    void init_tensor_random(float minBound, float maxBound) {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<float> dist(minBound, maxBound);
+        for (int i = 0; i < this->rows * this->cols; i++) this->data[i] = dist(gen);
+    }
 
     ~Tensor() {
         alive--;
     }
-
-
 };
+
 
 class tensorGraphCtx {
 public:
-    std::vector<std::unique_ptr<Tensor>> tensors;
+    std::vector<std::unique_ptr<Tensor>> tensors; //unique pointers manage graph memory lifespan/ownership
 
     Tensor* make(int rows, int cols) {
         tensors.emplace_back(std::make_unique<Tensor>(rows, cols));
         return tensors.back().get();
     }
+
 };
 
+Tensor* clone(tensorGraphCtx& ctx, const Tensor* src) {
+    Tensor* t = ctx.make(src->rows, src->cols);
+    std::copy(src->data.get(), src->data.get() + src->rows*src->cols, t->data.get());
+    return t;   // caller reassigns their own variable
+}
 
 
 void elwise_add(const double *a, const double *b, double *out, int n) {
     for (int i {0}; i < n; i++) {
         out[i] = a[i] + b[i];
+    }
+}
+
+
+void matmul_host(const double* a, const double* b, double* out, int a_rows, int a_cols, int b_rows, int b_cols) {
+    assert(a_cols == b_rows);
+    for (int i = 0; i < a_rows; i++) {
+        for (int k = 0; k < a_cols; k++) {
+            double av = a[i * a_cols + k];
+            for (int j = 0; j < b_cols; j++)
+                out[i * b_cols + j] += av * b[k * b_cols + j];
+        }
     }
 }
 
@@ -77,19 +98,41 @@ Tensor* add(tensorGraphCtx& ctx, Tensor* a, Tensor* b) {
     return out;
 }
 
+Tensor* bias_add(tensorGraphCtx& ctx, Tensor* a, Tensor* b) {
+    // a: (rows, cols), b: (1, cols) broadcast across every row of a
+    assert(b->rows == 1 && a->cols == b->cols);
+    Tensor* out = ctx.make(a->rows, a->cols);
+    out->prev = {a, b};
+    a->pending++;
+    b->pending++;
+
+    for (int i = 0; i < a->rows; i++) {
+        for (int j = 0; j < a->cols; j++) {
+            out->data[i * a->cols + j] = a->data[i * a->cols + j] + b->data[j];
+        }
+    }
+
+    out->backward = [a, b, out]() {
+        for (int i = 0; i < out->rows; i++) {
+            for (int j = 0; j < out->cols; j++) {
+                // forward: out[i,j] = a[i,j] + b[0,j]
+                a->grad[i * out->cols + j] += out->grad[i * out->cols + j];
+                b->grad[j]                 += out->grad[i * out->cols + j];  // sum over rows
+            }
+        }
+    };
+    return out;
+}
+
 Tensor * mul(tensorGraphCtx& ctx, Tensor* a, Tensor* b) {
     assert(a->cols == b->rows);
     Tensor* out = ctx.make(a->rows, b->cols);
     out->prev = {a, b};
     a->pending++;
     b->pending++;
-    for (int i = 0; i < a->rows; i++) {
-        for (int k = 0; k < a->cols; k++) {
-            double av = a->data[i * a->cols + k];
-            for (int j = 0; j < b->cols; j++)
-                out->data[i * b->cols + j] += av * b->data[k * b->cols + j];
-        }
-    }
+
+    matmul_host(a->data.get(), b->data.get(), out->data.get(),
+                                    a->rows, a->cols, b->rows,b->cols);
 
     out->backward = [a, b, out]() {
 
@@ -112,6 +155,97 @@ Tensor * mul(tensorGraphCtx& ctx, Tensor* a, Tensor* b) {
 }
 
 
+Tensor * relu(tensorGraphCtx& ctx, Tensor* a) {
+    Tensor* out = ctx.make(a->rows, a->cols);
+    out->prev = {a};
+    a->pending++;
+    for (int i = 0; i < a->rows*a->cols; i++) {
+        out->data[i] = std::max(a->data[i], 0.0);
+    }
+
+    out->backward = [a, out]() {
+        for (int i= 0; i < out->rows*out->cols; i++) {
+            if (out->data[i] > 0.0) {
+                a->grad[i] += out->grad[i];
+            }
+        }
+    };
+
+    return out;
+}
+
+Tensor* cross_entropy_loss(tensorGraphCtx& ctx, Tensor* logits, int label) {
+    Tensor* loss = ctx.make(1,1);
+
+    loss->prev = {logits};
+    logits->pending++;
+
+    double* start = &logits->data[0]; double* end = &logits->data[logits->rows * logits->cols];
+    double m = *std::max_element(start, end);
+
+    double log_softmax = (logits->data[label] - m);
+    double psum = 0.0;
+    for (int j{0}; j < logits->rows * logits->cols; j++) {
+        psum += std::exp(logits->data[j] - m);
+    }
+    loss->data[0] = - (log_softmax - std::log(psum));
+
+    loss->backward = [logits, loss, label, psum, m] () {
+        for (int j = 0; j < logits->rows*logits->cols; j++) {
+            logits->grad[j] += ((std::exp(logits->data[j] - m) / psum) - 1*(j==label)) * loss->grad[0];
+        }
+    };
+    return loss;
+}
+
+
+
+void sgd_step(tensorGraphCtx& params, double lr) {
+    for (auto& up : params.tensors) {          // up: unique_ptr<Tensor>&
+        Tensor* t = up.get();
+        int n = t->rows * t->cols;
+        for (int i = 0; i < n; i++)
+            t->data[i] -= lr * t->grad[i];
+    }
+}
+
+void zero_grad(tensorGraphCtx& params) {
+    for (auto& up : params.tensors) {          // up: unique_ptr<Tensor>&
+        Tensor* t = up.get();
+        int n = t->rows * t->cols;
+        std::fill(t->grad.get(), t->grad.get() + n, 0.0);
+    }
+}
+
+struct MLP {
+    tensorGraphCtx params;        // owns permanent params
+    Tensor *W1,  *W2, *b1, *b2;    // raw ptrs into params
+
+    MLP(int in, int hidden, int out, double initMin, double initMax) {
+
+        W1 = params.make(in, hidden);  b1 = params.make(1, hidden);
+        W2 = params.make(hidden, out); b2 = params.make(1, out);
+
+        W1->init_tensor_random(initMin, initMax); b1->init_tensor_random(initMin, initMax);
+        W2->init_tensor_random(initMin, initMax); b2->init_tensor_random(initMin, initMax);
+    }
+
+    Tensor* forward(tensorGraphCtx& ctx, Tensor* x) {
+        Tensor* h = relu(ctx, bias_add(ctx, mul(ctx, x, W1), b1));
+        return bias_add(ctx, mul(ctx, h, W2), b2);   // logits
+    }
+
+    int infer(Tensor* x) {
+        tensorGraphCtx ctx;
+        Tensor* logits = this->forward(ctx, x);
+        for (auto& up : params.tensors) up->pending = 0;   // forward-without-backwards reset, as designed
+        return std::max()                    // you write this
+    }
+};
+
+
+
+
 void backwards(Tensor* loss) {
     int n = loss->rows * loss->cols;
     for (int i {0}; i < n; i++) {loss->grad[i] = 1.0;}
@@ -122,8 +256,111 @@ void backwards(Tensor* loss) {
         if (t->backward) t->backward();
         for (Tensor* v : t->prev) {
             v->pending--;
-            if (v->pending == 0) ready.push_back(v);
+            if (v->pending == 0) ready.emplace_back(v);
         }
     }
 }
+
+struct Graph {
+    Tensor* L;
+    std::vector<Tensor*> leaves;
+};
+
+bool compare_grad_t(double a, double n) {
+    const double atol = 1e-8;
+    const double rtol = 1e-5;
+    return std::abs(a - n) < atol + rtol * std::max(std::abs(a), std::abs(n));
+}
+
+bool tensor_gradcheck(std::function<Graph(tensorGraphCtx& ctx, const std::vector<Tensor*>&)> build,
+               std::vector<Tensor*> xs, int num_tests)
+{
+
+    //No h reaches 16 digits: shrinking h trades truncation for cancellation,
+    //and the floor at their crossing is ≈ 3e-11 (~11 digits). h is tuned to the valley bottom, not to eps.
+
+    const double h = 1e-5;                       // step size
+
+    // ---- analytic side:
+    tensorGraphCtx an_ctx;
+    Graph g = build(an_ctx, xs);              // BUILD CALL. Fresh nodes, pendings
+    backwards(g.L);                              // fills every leaf's ->grad via chain rule
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    bool all_ok = true;
+    for (size_t i = 0; i < num_tests; ++i) {
+
+
+        std::uniform_int_distribution<int> dist_leaves(0,xs.size() - 1);
+        int nudgeLeaf = dist_leaves(gen);
+        std::uniform_int_distribution<int> dist_elements(0,(xs[nudgeLeaf]->rows * xs[nudgeLeaf]->cols) - 1);
+        int nudgeIdx = dist_elements(gen);
+
+        double f_plus {0.0};
+        {
+            tensorGraphCtx plus_ctx;
+            std::vector<Tensor*> plus_leaves;
+            for (Tensor* x : xs) plus_leaves.emplace_back(clone(plus_ctx, x));
+
+            plus_leaves[nudgeLeaf]->data[nudgeIdx] += h;      // mutate the CLONE, xs untouched
+
+            Graph fpg = build(plus_ctx, plus_leaves);
+
+            for (int i = 0; i < fpg.L->rows * fpg.L->cols; i++) f_plus  += fpg.L->data[i];
+        }
+
+        double f_minus {0.0};
+        {
+            tensorGraphCtx minus_ctx;
+            std::vector<Tensor*> minus_leaves;
+            for (Tensor* x : xs) minus_leaves.emplace_back(clone(minus_ctx, x));
+
+            minus_leaves[nudgeLeaf]->data[nudgeIdx] -= h;
+
+            Graph fmg = build(minus_ctx, minus_leaves);
+
+            for (int i = 0; i < fmg.L->rows * fmg.L->cols; i++) f_minus  += fmg.L->data[i];
+        }
+
+
+        double numeric  = (f_plus - f_minus) / (2 * h);
+        double analytic = g.leaves[nudgeLeaf]->grad[nudgeIdx];
+
+        bool ok = compare_grad_t(analytic, numeric);
+        all_ok = all_ok && ok;
+        printf("leaf: %d , elem %d:  analytic % .12f   numeric % .12f   %s\n",
+               nudgeLeaf, nudgeIdx, analytic, numeric, ok ? "PASS" : "FAIL");
+    }
+    return all_ok;
+}
+
+
+int main() {
+
+
+    std::vector<Tensor*> examples; //PLACEHOLDERS
+    std::vector<int> labels;
+
+    MLP model(100, 200, 10, -3.0, 3.0);
+
+    int steps = 10;
+
+    for (int i = 0; i < steps; ++i) {
+        tensorGraphCtx step_ctx;
+        Tensor* ex_data = clone(step_ctx, examples[i]);
+        Tensor* loss = model.forward(step_ctx, ex_data);
+
+        backwards(loss);
+        std::cout << "loss on step " << i+1 << " was " << loss->data[0] << std::endl;
+        sgd_step(model.params, 0.01);
+        zero_grad(model.params);
+    }
+
+
+
+return 0;
+}
+
 
