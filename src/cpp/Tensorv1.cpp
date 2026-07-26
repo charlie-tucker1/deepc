@@ -181,25 +181,44 @@ Tensor * relu(tensorGraphCtx& ctx, Tensor* a) {
     return out;
 }
 
-Tensor* cross_entropy_loss(tensorGraphCtx& ctx, Tensor* logits, int label) {
+Tensor* cross_entropy_loss(tensorGraphCtx& ctx, Tensor* logits, const std::vector<int>& labels) {
+    assert(logits->rows == labels.size());
     Tensor* loss = ctx.make(1,1);
 
     loss->prev = {logits};
     logits->pending++;
 
-    double* start = &logits->data[0]; double* end = &logits->data[logits->rows * logits->cols];
-    double m = *std::max_element(start, end);
+    std::vector<double> row_ms;
+    std::vector<double> row_psums;
 
-    double log_softmax = (logits->data[label] - m);
-    double psum = 0.0;
-    for (int j{0}; j < logits->rows * logits->cols; j++) {
-        psum += std::exp(logits->data[j] - m);
+    for (int i = 0; i < labels.size(); ++i) {
+
+        double* start = &logits->data[i * logits->cols];
+        double* end = &logits->data[i * logits->cols + logits->cols];
+        double m = *std::max_element(start, end);
+
+        row_ms.emplace_back(m);
+
+        double log_softmax = (logits->data[i * logits->cols + labels[i]] - m);
+        double psum = 0.0;
+        for (int j{0}; j < logits->cols; j++) {
+            psum += std::exp(logits->data[i * logits->cols + j] - m);
+        }
+        loss->data[0] += - (log_softmax - std::log(psum));
+
+        row_psums.emplace_back(psum);
     }
-    loss->data[0] = - (log_softmax - std::log(psum));
 
-    loss->backward = [logits, loss, label, psum, m] () {
-        for (int j = 0; j < logits->rows*logits->cols; j++) {
-            logits->grad[j] += ((std::exp(logits->data[j] - m) / psum) - 1*(j==label)) * loss->grad[0];
+    loss->data[0] /= labels.size();
+
+    loss->backward = [logits, loss, labels, row_psums, row_ms] () {
+
+        for (int i = 0; i < logits->rows; i++)
+        {
+            for (int j = 0; j < logits->cols; j++) {
+                logits->grad[i*logits->cols + j] += ((std::exp(logits->data[i * logits->cols + j] - row_ms[i]) /
+                                        row_psums[i]) - 1*(j==labels[i])) * loss->grad[0] / labels.size();
+            }
         }
     };
     return loss;
@@ -224,11 +243,11 @@ void zero_grad(tensorGraphCtx& params) {
     }
 }
 
-struct MLP {
+struct MNIST_MLP {
     tensorGraphCtx params;        // owns permanent params
     Tensor *W1,  *W2, *b1, *b2;    // raw ptrs into params
 
-    MLP(int in, int hidden, int out) {
+    MNIST_MLP(int in, int hidden, int out) {
 
         W1 = params.make(in, hidden);  b1 = params.make(1, hidden);
         W2 = params.make(hidden, out); b2 = params.make(1, out);
@@ -236,15 +255,15 @@ struct MLP {
 
     }
 
-    // the architecture for our MLP:
-    static Tensor* forward_ops(tensorGraphCtx& ctx, Tensor* x,
+    // the architecture for our MNIST MLP:
+    static Tensor* mnist_forward_ops(tensorGraphCtx& ctx, Tensor* x,
                                Tensor* W1, Tensor* b1, Tensor* W2, Tensor* b2) {
         Tensor* h = relu(ctx, bias_add(ctx, mul(ctx, x, W1), b1));
         return bias_add(ctx, mul(ctx, h, W2), b2);
     }
 
     Tensor* forward(tensorGraphCtx& ctx, Tensor* x) {
-        return forward_ops(ctx, x, W1, b1, W2, b2);
+        return mnist_forward_ops(ctx, x, W1, b1, W2, b2);
     }
 
 
@@ -287,18 +306,18 @@ bool compare_grad_t(double a, double n) {
 }
 
 bool tensor_gradcheck(std::function<Graph(tensorGraphCtx& ctx, const std::vector<Tensor*>&)> build,
-               std::vector<Tensor*> xs, int num_tests)
+               std::vector<Tensor*> leaves, int num_tests)
 {
 
     //No h reaches 16 digits: shrinking h trades truncation for cancellation,
     //and the floor at their crossing is ≈ 3e-11 (~11 digits). h is tuned to the valley bottom, not to eps.
 
-    const double h = 1e-5;                       // step size
+    const double h = 1e-5;                           // step size
 
     // ---- analytic side:
     tensorGraphCtx an_ctx;
-    Graph g = build(an_ctx, xs);              // BUILD CALL. Fresh nodes, pendings
-    backwards(g.L);                              // fills every leaf's ->grad via chain rule
+    Graph g = build(an_ctx, leaves);              // BUILD CALL. Fresh nodes, pendings
+    backwards(g.L);                                  // fills every leaf's ->grad via chain rule
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -307,16 +326,16 @@ bool tensor_gradcheck(std::function<Graph(tensorGraphCtx& ctx, const std::vector
     for (size_t i = 0; i < num_tests; ++i) {
 
 
-        std::uniform_int_distribution<int> dist_leaves(0,xs.size() - 1);
+        std::uniform_int_distribution<int> dist_leaves(0,leaves.size() - 1);
         int nudgeLeaf = dist_leaves(gen);
-        std::uniform_int_distribution<int> dist_elements(0,(xs[nudgeLeaf]->rows * xs[nudgeLeaf]->cols) - 1);
+        std::uniform_int_distribution<int> dist_elements(0,(leaves[nudgeLeaf]->rows * leaves[nudgeLeaf]->cols) - 1);
         int nudgeIdx = dist_elements(gen);
 
         double f_plus {0.0};
         {
             tensorGraphCtx plus_ctx;
             std::vector<Tensor*> plus_leaves;
-            for (Tensor* x : xs) plus_leaves.emplace_back(clone(plus_ctx, x));
+            for (Tensor* x : leaves) plus_leaves.emplace_back(clone(plus_ctx, x));
 
             plus_leaves[nudgeLeaf]->data[nudgeIdx] += h;      // mutate the CLONE, xs untouched
 
@@ -329,7 +348,7 @@ bool tensor_gradcheck(std::function<Graph(tensorGraphCtx& ctx, const std::vector
         {
             tensorGraphCtx minus_ctx;
             std::vector<Tensor*> minus_leaves;
-            for (Tensor* x : xs) minus_leaves.emplace_back(clone(minus_ctx, x));
+            for (Tensor* x : leaves) minus_leaves.emplace_back(clone(minus_ctx, x));
 
             minus_leaves[nudgeLeaf]->data[nudgeIdx] -= h;
 
@@ -367,41 +386,77 @@ int main() {
 
 
 //Init our MLP with proper dims, randomly init by: +- 1 / sqrt(->dim)
-    MLP model(784, 128, 10);
-    model.W1->init_tensor_random(-0.04, 0.04);
-    model.b1->init_tensor_random(-0.04, 0.04);
-    model.W2->init_tensor_random(-0.09, 0.09);
-    model.b2->init_tensor_random(-0.09, 0.09);
+    MNIST_MLP mnist_model(784, 128, 10);
+    mnist_model.W1->init_tensor_random(-0.04, 0.04);
+    mnist_model.b1->init_tensor_random(-0.04, 0.04);
+    mnist_model.W2->init_tensor_random(-0.09, 0.09);
+    mnist_model.b2->init_tensor_random(-0.09, 0.09);
+
+
+/*
+    //gradcheck new batched CE:
+    std::vector<int> labels = {0, 4, 2, 1};
+
+    std::vector<Tensor*> leaves;
+    leaves.emplace_back(mnist_model.W1); leaves.emplace_back(mnist_model.b1);
+    leaves.emplace_back(mnist_model.W2); leaves.emplace_back(mnist_model.b2);
+
+    tensorGraphCtx x_ctx;                       // outlives the gradcheck
+    Tensor* x_master = x_ctx.make(4, 784);
+    x_master->init_tensor_random(-1.0, 1.0);
+
+    auto build = [labels, x_master](tensorGraphCtx& ctx, const std::vector<Tensor*>& leaves) {
+        Tensor* x = clone(ctx, x_master);
+        Tensor* logits = MNIST_MLP::mnist_forward_ops(ctx, x, leaves[0], leaves[1], leaves[2], leaves[3]);
+        return Graph{cross_entropy_loss(ctx, logits, labels), leaves};
+    };
+
+
+    tensor_gradcheck(build, leaves,  30);
+
+
+*/
+
 
     int steps = 60000;
+    int batch_size = 64;
+    int epochs = 5;
 
-std::cout << "Starting training for " << steps << " steps\n";
+    std::cout << "Starting training for " << steps << " steps\n";
 
-auto start = std::chrono::steady_clock::now();
+    for (int e = 0; e < epochs; e++) {
+        auto start = std::chrono::steady_clock::now();
 
-    for (int i = 0; i < steps; ++i) {
+        for (int i = 0; i < steps / batch_size; ++i) {
 
-        tensorGraphCtx step_ctx;
-        Tensor* ex_data = step_ctx.make(1,784);
+            tensorGraphCtx step_ctx;
+            Tensor* ex_data = step_ctx.make(batch_size,784);
 
-        for (int p = 0; p < 784; ++p)
-            ex_data->data[p] = mnist.images[i][p] / 255.0;
+            std::vector<int> batch_labels(batch_size);
+            for (int j = 0; j < batch_size; ++j) {
+                int idx = i * batch_size + j;
+                for (int p = 0; p < 784; ++p)
+                    ex_data->data[j * 784 + p] = mnist.images[idx][p] / 255.0;
+                batch_labels[j] = static_cast<int>(mnist.labels[idx]);
+            }
 
-        Tensor* logits = model.forward(step_ctx, ex_data);
-        Tensor* loss = cross_entropy_loss(step_ctx, logits, static_cast<int>(mnist.labels[i]));
+            Tensor* logits = mnist_model.forward(step_ctx, ex_data);
+            Tensor* loss = cross_entropy_loss(step_ctx, logits, batch_labels);
 
 
-        if (i % 10000 == 0) {std::cout << "loss on step " << i << " was " << loss->data[0] << std::endl;}
-        backwards(loss);
+            if (i % 100 == 0) {std::cout << "loss on batch " << i << ", " << "epoch " << e << " was " << loss->data[0] << std::endl;}
+            backwards(loss);
 
 
-        sgd_step(model.params, 0.01);
-        zero_grad(model.params);
+            sgd_step(mnist_model.params, 0.05);
+            zero_grad(mnist_model.params);
+        }
+        auto end = std::chrono::steady_clock::now();
+        auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        std::cout << "Elapsed time for epoch " << e << " : " << elapsed_ms.count() << " ms\n";
     }
-auto end = std::chrono::steady_clock::now();
-auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
-std::cout << "Elapsed time: " << elapsed_ms.count() << " ms\n";
+
 
 
     //run inference:
@@ -423,7 +478,7 @@ std::cout << "Starting inference on " << test_examples << " examples\n";
         for (int p = 0; p < 784; ++p)
             ex_data->data[p] = mnist_test.images[i][p] / 255.0;
 
-        if (model.infer(ex_data) == mnist_test.labels[i]) { ++accuracy_sum; };
+        if (mnist_model.infer(ex_data) == mnist_test.labels[i]) { ++accuracy_sum; };
     }
 
     auto end_infer = std::chrono::steady_clock::now();
@@ -433,7 +488,7 @@ std::cout << "Starting inference on " << test_examples << " examples\n";
     std::cout << "Accuracy: " << accuracy_sum / static_cast<float>(test_examples) << "\n";
 
 
-return 0;
+    return 0;
 }
 
 
