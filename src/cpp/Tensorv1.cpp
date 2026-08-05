@@ -105,26 +105,26 @@ Tensor* add(tensorGraphCtx& ctx, Tensor* a, Tensor* b) {
     return out;
 }
 
-Tensor* bias_add(tensorGraphCtx& ctx, Tensor* a, Tensor* b) {
+Tensor* bias_add(tensorGraphCtx& ctx, Tensor* a, Tensor* bias) {
     // a: (rows, cols), b: (1, cols) broadcast across every row of a
     assert(b->rows == 1 && a->cols == b->cols);
     Tensor* out = ctx.make(a->rows, a->cols);
-    out->prev = {a, b};
+    out->prev = {a, bias};
     a->pending++;
-    b->pending++;
+    bias->pending++;
 
     for (int i = 0; i < a->rows; i++) {
         for (int j = 0; j < a->cols; j++) {
-            out->data[i * a->cols + j] = a->data[i * a->cols + j] + b->data[j];
+            out->data[i * a->cols + j] = a->data[i * a->cols + j] + bias->data[j];
         }
     }
 
-    out->backward = [a, b, out]() {
+    out->backward = [a, bias, out]() {
         for (int i = 0; i < out->rows; i++) {
             for (int j = 0; j < out->cols; j++) {
                 // forward: out[i,j] = a[i,j] + b[0,j]
                 a->grad[i * out->cols + j] += out->grad[i * out->cols + j];
-                b->grad[j]                 += out->grad[i * out->cols + j];  // sum over rows
+                bias->grad[j]                 += out->grad[i * out->cols + j];  // sum over rows
             }
         }
     };
@@ -251,8 +251,7 @@ struct MNIST_MLP {
 
         W1 = params.make(in, hidden);  b1 = params.make(1, hidden);
         W2 = params.make(hidden, out); b2 = params.make(1, out);
-
-
+        
     }
 
     // the architecture for our MNIST MLP:

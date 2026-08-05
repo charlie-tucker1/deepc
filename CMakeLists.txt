@@ -13,9 +13,9 @@ add_executable(deepc
         src/cpp/mnist_loader.cpp
         src/cpp/Tensorv1.cpp
         src/cpp/Value.cpp
-        #src/cuda/pmpp_matmul_v1.cu
-        #src/cuda/pmpp_matmul_v0.cu
         src/headers/mnist_loader.h
+        src/cuda/bias_add.cu
+        src/headers/mnist_cuda_ops.h
 
 )
 target_link_libraries(deepc PRIVATE CUDA::cudart)
