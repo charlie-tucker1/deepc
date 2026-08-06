@@ -37,7 +37,7 @@ The forward path (ikj-ordered matmul, streaming writes, no loop-carried dependen
 
 ### Ownership: arena contexts, two lifetimes
 
-All tensors are owned by a `tensorGrapharena` — an arena of `unique_ptr<Tensor>` — and referenced everywhere else by raw pointer. Two context lifetimes:
+All tensors are owned by a `GraphArena` — an arena of `unique_ptr<Tensor>` — and referenced everywhere else by raw pointer. Two context lifetimes:
 
 - **Persistent** — model parameters live in the `MNIST_MLP`'s own `params` arena for the life of the model.
 - **Per-step** — each training step builds its graph (input tensor, activations, loss) in a fresh `step_arena` that dies at the bottom of the loop iteration. Graph teardown is scope exit; there is no `free` logic to get wrong.
