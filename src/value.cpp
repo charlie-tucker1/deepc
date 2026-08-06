@@ -16,19 +16,19 @@ using Scalar = double;
 
 
 
-struct Value {
+struct value {
 
-    Value(double x) : data{x} {alive++;}
+    value(double x) : data{x} {alive++;}
     Scalar data;
     Scalar grad {0.0};
     int pending {0};
 
-    std::vector<Value*> prev;
+    std::vector<value*> prev;
     std::function<void()> backward;
 
     inline static int alive = 0;
 
-    ~Value(){ alive--;}
+    ~value(){ alive--;}
 
 };
 
@@ -36,10 +36,10 @@ struct Value {
 
 class GraphContext {
 public :
-    std::vector<std::unique_ptr<Value>> nodes;
+    std::vector<std::unique_ptr<value>> nodes;
 
-    Value* make(double data) {
-        nodes.emplace_back(std::make_unique<Value>(data));
+    value* make(double data) {
+        nodes.emplace_back(std::make_unique<value>(data));
         return nodes.back().get();
     }
 };
@@ -48,8 +48,8 @@ public :
 
 
 
-Value* mul(GraphContext& ctx, Value* a, Value* b) {
-    Value* out = ctx.make(a->data * b->data);
+value* mul(GraphContext& ctx, value* a, value* b) {
+    value* out = ctx.make(a->data * b->data);
     out->prev = {a, b};
     a->pending++;                       // out consumes a
     b->pending++;                       // out consumes b
@@ -60,8 +60,8 @@ Value* mul(GraphContext& ctx, Value* a, Value* b) {
     return out;
 }
 
-Value* add(GraphContext& ctx, Value* a, Value* b) {
-    Value* out = ctx.make(a->data + b->data);
+value* add(GraphContext& ctx, value* a, value* b) {
+    value* out = ctx.make(a->data + b->data);
     out->prev = {a, b};
     a->pending++;
     b->pending++;
@@ -72,8 +72,8 @@ Value* add(GraphContext& ctx, Value* a, Value* b) {
     return out;
 }
 
-Value* sub(GraphContext& ctx, Value* a, Value* b) {
-    Value* out = ctx.make(a->data - b->data);
+value* sub(GraphContext& ctx, value* a, value* b) {
+    value* out = ctx.make(a->data - b->data);
     out->prev = {a, b};
     a->pending++;
     b->pending++;
@@ -84,8 +84,8 @@ Value* sub(GraphContext& ctx, Value* a, Value* b) {
     return out;
 }
 
-Value* exp(GraphContext& ctx, Value* a) {
-    Value* out = ctx.make(std::exp(a->data) );
+value* exp(GraphContext& ctx, value* a) {
+    value* out = ctx.make(std::exp(a->data) );
     out->prev = {a};
     a->pending++;
     out->backward = [a, out]() {
@@ -94,8 +94,8 @@ Value* exp(GraphContext& ctx, Value* a) {
     return out;
 }
 
-Value* div(GraphContext& ctx, Value* a, Value* b) {
-    Value* out = ctx.make(a->data / b->data);
+value* div(GraphContext& ctx, value* a, value* b) {
+    value* out = ctx.make(a->data / b->data);
     out->prev = {a, b};
     a->pending++;
     b->pending++;
@@ -106,8 +106,8 @@ Value* div(GraphContext& ctx, Value* a, Value* b) {
     return out;
 }
 
-Value* log(GraphContext& ctx, Value* a) {
-    Value* out = ctx.make(std::log(a->data));
+value* log(GraphContext& ctx, value* a) {
+    value* out = ctx.make(std::log(a->data));
     out->prev = {a};
     a->pending++;
     out->backward = [a, out]() {
@@ -116,8 +116,8 @@ Value* log(GraphContext& ctx, Value* a) {
     return out;
 }
 
-Value* pow(GraphContext& ctx, Value* a, double raise) {
-    Value* out = ctx.make(std::pow(a->data, raise) );
+value* pow(GraphContext& ctx, value* a, double raise) {
+    value* out = ctx.make(std::pow(a->data, raise) );
     out->prev = {a};
     a->pending++;
     out->backward = [a, raise, out]() {
@@ -127,8 +127,8 @@ Value* pow(GraphContext& ctx, Value* a, double raise) {
 }
 
 
-Value* tanh(GraphContext& ctx, Value* a) {
-    Value* out = ctx.make(std::tanh(a->data));
+value* tanh(GraphContext& ctx, value* a) {
+    value* out = ctx.make(std::tanh(a->data));
     out->prev = {a};
     a->pending++;
     out->backward = [a, out]() {                             // derivative of a tanh(x) operation is = 1 - tanh^2(x) ->
@@ -137,8 +137,8 @@ Value* tanh(GraphContext& ctx, Value* a) {
     return out;
 }
 
-Value* relu(GraphContext& ctx, Value* a) {
-    Value* out = ctx.make(a->data > 0 ? a->data : 0.0);
+value* relu(GraphContext& ctx, value* a) {
+    value* out = ctx.make(a->data > 0 ? a->data : 0.0);
     out->prev = {a};
     a->pending++;
     if (out->data) {           //derivative = 1 if a->data > 0, derivative is 0.0 if a->data <= 0
@@ -157,13 +157,13 @@ Value* relu(GraphContext& ctx, Value* a) {
 
 
 
-void backwards(Value* L) {
+void backwards(value* L) {
     L->grad = 1.0;
-    std::deque<Value*> ready = {L};
+    std::deque<value*> ready = {L};
     while (!ready.empty()) {
-        Value* node = ready.front(); ready.pop_front();
+        value* node = ready.front(); ready.pop_front();
         if (node->backward) node->backward();
-        for (Value* p : node->prev) {
+        for (value* p : node->prev) {
             p->pending--;
             if (p->pending == 0) ready.push_back(p);
         }
@@ -173,8 +173,8 @@ void backwards(Value* L) {
 
 
 struct Graph {
-    Value* L;
-    std::vector<Value*> leaves;
+    value* L;
+    std::vector<value*> leaves;
 };
 
 bool compare_grad(double a, double n) {

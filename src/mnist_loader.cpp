@@ -1,6 +1,7 @@
-#include "../headers/mnist_loader.h"
+
 #include <fstream>
 #include <stdexcept>
+#include "deepc/mnist_loader.h"
 
 static uint32_t read_be_uint32(std::ifstream& f) {
     unsigned char b[4];
