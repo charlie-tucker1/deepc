@@ -12,10 +12,10 @@
 #include "deepc/mnist_loader.h"
 
 namespace deepc {
-    class tensorGraphContext;
+    class GraphArena;
 
     struct MNIST_MLP {
-        tensorGraphContext params;        // owns permanent params
+        GraphArena params;        // owns permanent params
         Tensor *W1,  *W2, *b1, *b2;    // raw ptrs into params
 
         MNIST_MLP(const int in, const int hidden, const int out) {
@@ -26,20 +26,20 @@ namespace deepc {
         }
 
         // the architecture for our MNIST MLP:
-        static Tensor* mnist_forward_ops(tensorGraphContext& ctx, Tensor* x,
+        static Tensor* mnist_forward_ops(GraphArena& arena, Tensor* x,
                                    Tensor* W1, Tensor* b1, Tensor* W2, Tensor* b2) {
-            Tensor* h = relu(ctx, bias_add(ctx, mul(ctx, x, W1), b1));
-            return bias_add(ctx, mul(ctx, h, W2), b2);
+            Tensor* h = relu(arena, bias_add(arena, mul(arena, x, W1), b1));
+            return bias_add(arena, mul(arena, h, W2), b2);
         }
 
-        Tensor* forward(tensorGraphContext& ctx, Tensor* x) {
-            return mnist_forward_ops(ctx, x, W1, b1, W2, b2);
+        Tensor* forward(GraphArena& arena, Tensor* x) {
+            return mnist_forward_ops(arena, x, W1, b1, W2, b2);
         }
 
 
         int infer(Tensor* x) {
-            tensorGraphContext ctx;
-            Tensor* logits = this->forward(ctx, x);
+            GraphArena arena;
+            Tensor* logits = this->forward(arena, x);
             for (const auto& up : params.tensors) up->pending = 0;   // forward-without-backwards reset, as designed
             return std::distance(&logits->data[0],
                 std::max_element(&logits->data[0], &logits->data[0]+10));
@@ -80,14 +80,14 @@ namespace deepc {
             leaves.emplace_back(mnist_model.W1); leaves.emplace_back(mnist_model.b1);
             leaves.emplace_back(mnist_model.W2); leaves.emplace_back(mnist_model.b2);
 
-            tensorGraphCtx x_ctx;                       // outlives the gradcheck
-            Tensor* x_master = x_ctx.make(4, 784);
+            tensorGrapharena x_arena;                       // outlives the gradcheck
+            Tensor* x_master = x_arena.make(4, 784);
             x_master->init_tensor_random(-1.0, 1.0);
 
-            auto build = [labels, x_master](tensorGraphCtx& ctx, const std::vector<Tensor*>& leaves) {
-                Tensor* x = clone(ctx, x_master);
-                Tensor* logits = MNIST_MLP::mnist_forward_ops(ctx, x, leaves[0], leaves[1], leaves[2], leaves[3]);
-                return Graph{cross_entropy_loss(ctx, logits, labels), leaves};
+            auto build = [labels, x_master](tensorGrapharena& arena, const std::vector<Tensor*>& leaves) {
+                Tensor* x = clone(arena, x_master);
+                Tensor* logits = MNIST_MLP::mnist_forward_ops(arena, x, leaves[0], leaves[1], leaves[2], leaves[3]);
+                return Graph{cross_entropy_loss(arena, logits, labels), leaves};
             };
 
 
@@ -108,8 +108,8 @@ namespace deepc {
 
             for (int i = 0; i < steps / batch_size; ++i) {
 
-                tensorGraphContext step_ctx;
-                Tensor* ex_data = step_ctx.make(batch_size,784);
+                GraphArena step_arena;
+                Tensor* ex_data = step_arena.make(batch_size,784);
 
                 std::vector<int> batch_labels(batch_size);
                 for (int j = 0; j < batch_size; ++j) {
@@ -119,8 +119,8 @@ namespace deepc {
                     batch_labels[j] = static_cast<int>(mnist.labels[idx]);
                 }
 
-                Tensor* logits = mnist_model.forward(step_ctx, ex_data);
-                Tensor* loss = cross_entropy_loss(step_ctx, logits, batch_labels);
+                Tensor* logits = mnist_model.forward(step_arena, ex_data);
+                Tensor* loss = cross_entropy_loss(step_arena, logits, batch_labels);
 
 
                 if (i % 100 == 0) {std::cout << "loss on batch " << i << ", " << "epoch " << e << " was " << loss->data[0] << std::endl;}
@@ -151,8 +151,8 @@ namespace deepc {
         float accuracy_sum = 0.0;
         for (int i = 0; i < test_examples; ++i) {
 
-            tensorGraphContext step_ctx;
-            Tensor* ex_data = step_ctx.make(1,784);
+            GraphArena step_arena;
+            Tensor* ex_data = step_arena.make(1,784);
 
             for (int p = 0; p < 784; ++p)
                 ex_data->data[p] = mnist_test.images[i][p] / 255.0;

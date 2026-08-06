@@ -7,7 +7,7 @@
 #include "deepc/ops.h"
 
 namespace deepc {
-    class tensorGraphContext;
+    class GraphArena;
 
     namespace { // anon namespace to restrict linkage of cpu compute
         void elwise_add_fwd_cpu(const double *a, const double *b, double *out, int n) {
@@ -39,9 +39,9 @@ namespace deepc {
 
 
 
-    Tensor* add(tensorGraphContext& ctx, Tensor* a, Tensor* b) {
+    Tensor* add(GraphArena& arena, Tensor* a, Tensor* b) {
         assert(a->rows == b->rows && a->cols == b->cols);
-        Tensor* out = ctx.make(a->rows, a->cols);
+        Tensor* out = arena.make(a->rows, a->cols);
         out->prev = {a, b};
         a->pending++;
         b->pending++;
@@ -58,10 +58,10 @@ namespace deepc {
         return out;
     }
 
-    Tensor* bias_add(tensorGraphContext& ctx, Tensor* a, Tensor* bias) {
+    Tensor* bias_add(GraphArena& arena, Tensor* a, Tensor* bias) {
         // a: (rows, cols), b: (1, cols) broadcast across every row of a
         assert(bias->rows == 1 && a->cols == bias->cols);
-        Tensor* out = ctx.make(a->rows, a->cols);
+        Tensor* out = arena.make(a->rows, a->cols);
         out->prev = {a, bias};
         a->pending++;
         bias->pending++;
@@ -80,9 +80,9 @@ namespace deepc {
         return out;
     }
 
-    Tensor * mul(tensorGraphContext& ctx, Tensor* a, Tensor* b) {
+    Tensor * mul(GraphArena& arena, Tensor* a, Tensor* b) {
         assert(a->cols == b->rows);
-        Tensor* out = ctx.make(a->rows, b->cols);
+        Tensor* out = arena.make(a->rows, b->cols);
         out->prev = {a, b};
         a->pending++;
         b->pending++;
@@ -111,8 +111,8 @@ namespace deepc {
     }
 
 
-    Tensor * relu(tensorGraphContext& ctx, Tensor* a) {
-        Tensor* out = ctx.make(a->rows, a->cols);
+    Tensor * relu(GraphArena& arena, Tensor* a) {
+        Tensor* out = arena.make(a->rows, a->cols);
         out->prev = {a};
         a->pending++;
         for (int i = 0; i < a->rows*a->cols; i++) {
@@ -130,9 +130,9 @@ namespace deepc {
         return out;
     }
 
-    Tensor* cross_entropy_loss(tensorGraphContext& ctx, Tensor* logits, const std::vector<int>& labels) {
+    Tensor* cross_entropy_loss(GraphArena& arena, Tensor* logits, const std::vector<int>& labels) {
         assert(logits->rows == labels.size());
-        Tensor* loss = ctx.make(1,1);
+        Tensor* loss = arena.make(1,1);
 
         loss->prev = {logits};
         logits->pending++;

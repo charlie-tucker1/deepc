@@ -8,7 +8,7 @@
 
 
 namespace deepc {
-    class tensorGraphContext;
+    class GraphArena;
     struct Tensor;
 
     bool compare_grad_t(const double a, const double n) {
@@ -17,7 +17,7 @@ namespace deepc {
         return std::abs(a - n) < atol + rtol * std::max(std::abs(a), std::abs(n));
     }
 
-    bool tensor_gradcheck(std::function<Graph(tensorGraphContext& ctx, const std::vector<Tensor*>&)> build,
+    bool tensor_gradcheck(std::function<Graph(GraphArena& arena, const std::vector<Tensor*>&)> build,
                    std::vector<Tensor*> leaves, int num_tests)
     {
 
@@ -27,8 +27,8 @@ namespace deepc {
         const double h = 1e-5;                           // step size
 
         // ---- analytic side:
-        tensorGraphContext an_ctx;
-        Graph g = build(an_ctx, leaves);              // BUILD CALL. Fresh nodes, pendings
+        GraphArena an_arena;
+        Graph g = build(an_arena, leaves);              // BUILD CALL. Fresh nodes, pendings
         backwards(g.L);                                  // fills every leaf's ->grad via chain rule
 
         std::random_device rd;
@@ -45,26 +45,26 @@ namespace deepc {
 
             double f_plus {0.0};
             {
-                tensorGraphContext plus_ctx;
+                GraphArena plus_arena;
                 std::vector<Tensor*> plus_leaves;
-                for (Tensor* x : leaves) plus_leaves.emplace_back(clone(plus_ctx, x));
+                for (Tensor* x : leaves) plus_leaves.emplace_back(clone(plus_arena, x));
 
                 plus_leaves[nudgeLeaf]->data[nudgeIdx] += h;      // mutate the CLONE, xs untouched
 
-                Graph fpg = build(plus_ctx, plus_leaves);
+                Graph fpg = build(plus_arena, plus_leaves);
 
                 for (int i = 0; i < fpg.L->rows * fpg.L->cols; i++) f_plus  += fpg.L->data[i];
             }
 
             double f_minus {0.0};
             {
-                tensorGraphContext minus_ctx;
+                GraphArena minus_arena;
                 std::vector<Tensor*> minus_leaves;
-                for (Tensor* x : leaves) minus_leaves.emplace_back(clone(minus_ctx, x));
+                for (Tensor* x : leaves) minus_leaves.emplace_back(clone(minus_arena, x));
 
                 minus_leaves[nudgeLeaf]->data[nudgeIdx] -= h;
 
-                Graph fmg = build(minus_ctx, minus_leaves);
+                Graph fmg = build(minus_arena, minus_leaves);
 
                 for (int i = 0; i < fmg.L->rows * fmg.L->cols; i++) f_minus  += fmg.L->data[i];
             }

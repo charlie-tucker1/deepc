@@ -5,15 +5,15 @@
 
 namespace deepc {
 
-    Tensor* add(tensorGraphContext& ctx, Tensor* a, Tensor* b);
+    Tensor* add(GraphArena& arena, Tensor* a, Tensor* b);
 
-    Tensor* bias_add(tensorGraphContext& ctx, Tensor* a, Tensor* bias);
+    Tensor* bias_add(GraphArena& arena, Tensor* a, Tensor* bias);
 
-    Tensor* mul(tensorGraphContext& ctx, Tensor* a, Tensor* b);
+    Tensor* mul(GraphArena& arena, Tensor* a, Tensor* b);
 
-    Tensor* relu(tensorGraphContext& ctx, Tensor* a);
+    Tensor* relu(GraphArena& arena, Tensor* a);
 
-    Tensor* cross_entropy_loss(tensorGraphContext& ctx, Tensor* logits, const std::vector<int>& labels);
+    Tensor* cross_entropy_loss(GraphArena& arena, Tensor* logits, const std::vector<int>& labels);
 
 
 }

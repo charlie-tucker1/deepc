@@ -37,10 +37,10 @@ The forward path (ikj-ordered matmul, streaming writes, no loop-carried dependen
 
 ### Ownership: arena contexts, two lifetimes
 
-All tensors are owned by a `tensorGraphCtx` — an arena of `unique_ptr<Tensor>` — and referenced everywhere else by raw pointer. Two context lifetimes:
+All tensors are owned by a `tensorGrapharena` — an arena of `unique_ptr<Tensor>` — and referenced everywhere else by raw pointer. Two context lifetimes:
 
-- **Persistent** — model parameters live in the `MNIST_MLP`'s own `params` ctx for the life of the model.
-- **Per-step** — each training step builds its graph (input tensor, activations, loss) in a fresh `step_ctx` that dies at the bottom of the loop iteration. Graph teardown is scope exit; there is no `free` logic to get wrong.
+- **Persistent** — model parameters live in the `MNIST_MLP`'s own `params` arena for the life of the model.
+- **Per-step** — each training step builds its graph (input tensor, activations, loss) in a fresh `step_arena` that dies at the bottom of the loop iteration. Graph teardown is scope exit; there is no `free` logic to get wrong.
 
 A `Tensor::alive` counter exists purely to catch leaks during development.
 
@@ -48,7 +48,7 @@ A `Tensor::alive` counter exists purely to catch leaks during development.
 
 Ops are free functions (`mul`, `add`, `bias_add`, `relu`, `cross_entropy_loss`) that:
 
-1. allocate their output in the caller's ctx,
+1. allocate their output in the caller's arena,
 2. record graph edges (`out->prev`, `input->pending++`),
 3. compute the forward immediately (eager),
 4. capture a backward closure in `out->backward` holding whatever forward state the gradient needs.

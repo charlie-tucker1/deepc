@@ -24,7 +24,7 @@ namespace deepc {
         for (int i = 0; i < rows * cols; i++) data[i] = dist(gen);
     }
 
-    Tensor* tensorGraphContext::make(int rows, int cols) {
+    Tensor* GraphArena::make(int rows, int cols) {
         tensors.emplace_back(std::make_unique<Tensor>(rows, cols));
         return tensors.back().get();
     }

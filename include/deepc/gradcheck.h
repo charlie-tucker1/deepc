@@ -5,7 +5,7 @@
 
 namespace deepc {
     struct Tensor;
-    class tensorGraphContext;
+    class GraphArena;
 
     struct Graph {
         Tensor* L;
@@ -14,7 +14,7 @@ namespace deepc {
 
     bool compare_grad_t(double a, double b);
 
-    bool tensor_gradcheck(std::function<Graph(tensorGraphContext& ctx, const std::vector<Tensor*>&)> build,
+    bool tensor_gradcheck(std::function<Graph(GraphArena& arena, const std::vector<Tensor*>&)> build,
                         std::vector<Tensor*> leaves, int num_tests);
 
 

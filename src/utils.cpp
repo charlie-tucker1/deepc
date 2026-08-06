@@ -7,17 +7,17 @@
 
 namespace deepc {
 
-    class tensorGraphContext;
+    class GraphArena;
 
-    Tensor* clone(tensorGraphContext& ctx, const Tensor* src) {
-        Tensor* t = ctx.make(src->rows, src->cols);
+    Tensor* clone(GraphArena& arena, const Tensor* src) {
+        Tensor* t = arena.make(src->rows, src->cols);
         std::copy(src->data.get(), src->data.get() + src->rows*src->cols, t->data.get());
         return t;   // caller reassigns their own variable
     }
 
 
 
-    void sgd_step(tensorGraphContext& params, double lr) {
+    void sgd_step(GraphArena& params, double lr) {
         for (auto& up : params.tensors) {          // up: unique_ptr<Tensor>&
             Tensor* t = up.get();
             int n = t->rows * t->cols;
@@ -26,7 +26,7 @@ namespace deepc {
         }
     }
 
-    void zero_grad(tensorGraphContext& params) {
+    void zero_grad(GraphArena& params) {
         for (auto& up : params.tensors) {          // up: unique_ptr<Tensor>&
             Tensor* t = up.get();
             int n = t->rows * t->cols;

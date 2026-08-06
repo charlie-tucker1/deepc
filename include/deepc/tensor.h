@@ -25,7 +25,7 @@ namespace deepc {
         ~Tensor();
     };
 
-    class tensorGraphContext {
+    class GraphArena {
     public:
         std::vector<std::unique_ptr<Tensor>> tensors; //unique pointers manage graph memory lifespan/ownership
 

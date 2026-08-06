@@ -4,15 +4,15 @@
 namespace deepc {
 
     struct Tensor;
-    class tensorGraphContext;
+    class GraphArena;
 
-    enum class Backend {CPU, CUDA}; // used by tensorGraphContext to determine backend (behind ifdef DEEPC_CUDA)
+    enum class Backend {CPU, CUDA}; // used by GraphArena to determine backend (behind ifdef DEEPC_CUDA)
 
-    Tensor* clone(tensorGraphContext& ctx, const Tensor* src);
+    Tensor* clone(GraphArena& arena, const Tensor* src);
 
-    void sgd_step(tensorGraphContext& ctx, double lr);
+    void sgd_step(GraphArena& arena, double lr);
 
-    void zero_grad(tensorGraphContext& params);
+    void zero_grad(GraphArena& params);
 
 
     void backwards(Tensor* loss);

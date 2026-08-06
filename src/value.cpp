@@ -48,8 +48,8 @@ public :
 
 
 
-value* mul(GraphContext& ctx, value* a, value* b) {
-    value* out = ctx.make(a->data * b->data);
+value* mul(GraphContext& arena, value* a, value* b) {
+    value* out = arena.make(a->data * b->data);
     out->prev = {a, b};
     a->pending++;                       // out consumes a
     b->pending++;                       // out consumes b
@@ -60,8 +60,8 @@ value* mul(GraphContext& ctx, value* a, value* b) {
     return out;
 }
 
-value* add(GraphContext& ctx, value* a, value* b) {
-    value* out = ctx.make(a->data + b->data);
+value* add(GraphContext& arena, value* a, value* b) {
+    value* out = arena.make(a->data + b->data);
     out->prev = {a, b};
     a->pending++;
     b->pending++;
@@ -72,8 +72,8 @@ value* add(GraphContext& ctx, value* a, value* b) {
     return out;
 }
 
-value* sub(GraphContext& ctx, value* a, value* b) {
-    value* out = ctx.make(a->data - b->data);
+value* sub(GraphContext& arena, value* a, value* b) {
+    value* out = arena.make(a->data - b->data);
     out->prev = {a, b};
     a->pending++;
     b->pending++;
@@ -84,8 +84,8 @@ value* sub(GraphContext& ctx, value* a, value* b) {
     return out;
 }
 
-value* exp(GraphContext& ctx, value* a) {
-    value* out = ctx.make(std::exp(a->data) );
+value* exp(GraphContext& arena, value* a) {
+    value* out = arena.make(std::exp(a->data) );
     out->prev = {a};
     a->pending++;
     out->backward = [a, out]() {
@@ -94,8 +94,8 @@ value* exp(GraphContext& ctx, value* a) {
     return out;
 }
 
-value* div(GraphContext& ctx, value* a, value* b) {
-    value* out = ctx.make(a->data / b->data);
+value* div(GraphContext& arena, value* a, value* b) {
+    value* out = arena.make(a->data / b->data);
     out->prev = {a, b};
     a->pending++;
     b->pending++;
@@ -106,8 +106,8 @@ value* div(GraphContext& ctx, value* a, value* b) {
     return out;
 }
 
-value* log(GraphContext& ctx, value* a) {
-    value* out = ctx.make(std::log(a->data));
+value* log(GraphContext& arena, value* a) {
+    value* out = arena.make(std::log(a->data));
     out->prev = {a};
     a->pending++;
     out->backward = [a, out]() {
@@ -116,8 +116,8 @@ value* log(GraphContext& ctx, value* a) {
     return out;
 }
 
-value* pow(GraphContext& ctx, value* a, double raise) {
-    value* out = ctx.make(std::pow(a->data, raise) );
+value* pow(GraphContext& arena, value* a, double raise) {
+    value* out = arena.make(std::pow(a->data, raise) );
     out->prev = {a};
     a->pending++;
     out->backward = [a, raise, out]() {
@@ -127,8 +127,8 @@ value* pow(GraphContext& ctx, value* a, double raise) {
 }
 
 
-value* tanh(GraphContext& ctx, value* a) {
-    value* out = ctx.make(std::tanh(a->data));
+value* tanh(GraphContext& arena, value* a) {
+    value* out = arena.make(std::tanh(a->data));
     out->prev = {a};
     a->pending++;
     out->backward = [a, out]() {                             // derivative of a tanh(x) operation is = 1 - tanh^2(x) ->
@@ -137,8 +137,8 @@ value* tanh(GraphContext& ctx, value* a) {
     return out;
 }
 
-value* relu(GraphContext& ctx, value* a) {
-    value* out = ctx.make(a->data > 0 ? a->data : 0.0);
+value* relu(GraphContext& arena, value* a) {
+    value* out = arena.make(a->data > 0 ? a->data : 0.0);
     out->prev = {a};
     a->pending++;
     if (out->data) {           //derivative = 1 if a->data > 0, derivative is 0.0 if a->data <= 0
@@ -194,8 +194,8 @@ bool gradcheck(std::function<Graph(GraphContext&, const std::vector<double>&)> b
     const double h = 1e-5;                       // step size
 
     // ---- analytic side:
-    GraphContext gc_ctx;
-    Graph g = build(gc_ctx, xs);                         // BUILD CALL. Fresh nodes, pendings
+    GraphContext gc_arena;
+    Graph g = build(gc_arena, xs);                         // BUILD CALL. Fresh nodes, pendings
     backwards(g.L);                              // fills every leaf's ->grad via chain rule
 
     bool all_ok = true;
@@ -206,14 +206,14 @@ bool gradcheck(std::function<Graph(GraphContext&, const std::vector<double>&)> b
 
         double f_plus;
         {
-            GraphContext plus_ctx;
-            f_plus  = build(plus_ctx, xph).L->data;
+            GraphContext plus_arena;
+            f_plus  = build(plus_arena, xph).L->data;
         }
 
         double f_minus;
         {
-            GraphContext minus_ctx;
-            f_minus  = build(minus_ctx, xmh).L->data;
+            GraphContext minus_arena;
+            f_minus  = build(minus_arena, xmh).L->data;
         }
         double numeric  = (f_plus - f_minus) / (2 * h);
         double analytic = g.leaves[i]->grad;
@@ -240,23 +240,23 @@ int main() {
 
 
     // Testing add(), mul(), sub(), and exp() in 'build'
-    auto build = [](GraphContext& ctx, const std::vector<double>& xs) {
-        Value* a_check = ctx.make(xs[0]);
-        Value* b_check = ctx.make(xs[1]);
-        Value* k_check = ctx.make(xs[2]);
-        Value* m_check = ctx.make(xs[3]);
-        Value* c_check = mul(ctx, a_check, b_check);
-        Value* d_check = mul(ctx, c_check, k_check);
-        Value* e_check = mul(ctx, c_check, m_check);
-        Value* f_check = add(ctx, e_check, d_check);
-        Value* j_exp = exp(ctx, f_check);
-        Value* g_check = sub(ctx, j_exp, e_check);
-        Value* pow_check = pow(ctx, g_check, 2.5);
-        Value* h_check = mul(ctx, g_check, pow_check);
-        Value* i_check = div(ctx, h_check, f_check);
-        Value* n_check = log(ctx, i_check);
-        Value* o_relu = relu(ctx, h_check);
-        Value* L_check = mul(ctx, o_relu, n_check);
+    auto build = [](GraphContext& arena, const std::vector<double>& xs) {
+        Value* a_check = arena.make(xs[0]);
+        Value* b_check = arena.make(xs[1]);
+        Value* k_check = arena.make(xs[2]);
+        Value* m_check = arena.make(xs[3]);
+        Value* c_check = mul(arena, a_check, b_check);
+        Value* d_check = mul(arena, c_check, k_check);
+        Value* e_check = mul(arena, c_check, m_check);
+        Value* f_check = add(arena, e_check, d_check);
+        Value* j_exp = exp(arena, f_check);
+        Value* g_check = sub(arena, j_exp, e_check);
+        Value* pow_check = pow(arena, g_check, 2.5);
+        Value* h_check = mul(arena, g_check, pow_check);
+        Value* i_check = div(arena, h_check, f_check);
+        Value* n_check = log(arena, i_check);
+        Value* o_relu = relu(arena, h_check);
+        Value* L_check = mul(arena, o_relu, n_check);
         return Graph{L_check, {a_check, b_check, k_check, m_check}};
     };
 
@@ -265,9 +265,9 @@ int main() {
     assert(Value::alive == 0);
 
     // Testing leaf -> exp() -> out in 'build2'
-    auto build2 = [](GraphContext& ctx2,  const std::vector<double>& xs) {
-        Value* a2_check = ctx2.make(xs[0]);
-        Value* L2_check = exp(ctx2, a2_check);
+    auto build2 = [](GraphContext& arena2,  const std::vector<double>& xs) {
+        Value* a2_check = arena2.make(xs[0]);
+        Value* L2_check = exp(arena2, a2_check);
         return Graph{L2_check, {a2_check}};
     };
 
@@ -276,9 +276,9 @@ int main() {
     assert(Value::alive == 0);
 
     // Test leaf -> tanh() -> out in build3
-    auto build3 = [](GraphContext& ctx3, const std::vector<double>& xs) {
-        Value* a3_check = ctx3.make(xs[0]);
-        Value* L3_check = tanh(ctx3, a3_check);
+    auto build3 = [](GraphContext& arena3, const std::vector<double>& xs) {
+        Value* a3_check = arena3.make(xs[0]);
+        Value* L3_check = tanh(arena3, a3_check);
         return Graph{L3_check, {a3_check}};
     };
 
@@ -286,9 +286,9 @@ int main() {
 
     assert(Value::alive == 0);
 
-    auto build4 = [](GraphContext& ctx4, const std::vector<double>& xs) {
-        Value* a4_check = ctx4.make(xs[0]);
-        Value* L4_check = relu(ctx4, a4_check);
+    auto build4 = [](GraphContext& arena4, const std::vector<double>& xs) {
+        Value* a4_check = arena4.make(xs[0]);
+        Value* L4_check = relu(arena4, a4_check);
         return Graph{L4_check, {a4_check}};
     };
 
