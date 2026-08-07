@@ -6,6 +6,10 @@
 #include "deepc/tensor.h"
 #include "deepc/ops.h"
 
+#ifdef DEEPC_CUDA
+#include "kernels.h"
+#endif
+
 namespace deepc {
     class GraphArena;
 
@@ -66,7 +70,20 @@ namespace deepc {
         a->pending++;
         bias->pending++;
 
-        bias_add_fwd_cpu(a->data.get(), bias->data.get(), out->data.get(), a->cols, a->rows);
+    #ifdef DEEPC_CUDA
+            if (arena.backend == Backend::CUDA) {
+                bias_add_fwd_gpu(a->data.get(), bias->data.get(), out->data.get(),
+                                 a->rows, a->cols);
+            } else {
+                bias_add_fwd_cpu(a->data.get(), bias->data.get(), out->data.get(),
+                                 a->cols, a->rows);
+            }
+    #else
+            bias_add_fwd_cpu(a->data.get(), bias->data.get(), out->data.get(),
+                             a->cols, a->rows);
+    #endif
+
+
 
         out->backward = [a, bias, out]() {
             for (int i = 0; i < out->rows; i++) {

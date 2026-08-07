@@ -4,26 +4,65 @@
 // each thread calculates 1 output element
 // output dimensions == input dimensions
 
-namespace {
-    constexpr int BX = 32, BY = 8;   // 256 threads; x = 32 → full-warp coalesced columns
+#include <cstdio>
+#include "cuda_runtime.h"
+#include "../src/kernels.h"
 
-    __global__ void biasAddKernel(const float* matrix, const float* bias_vec, float* out,
-                                const int BATCH_SIZE, const int BIAS_COLS) {
-        int trow = blockIdx.y * blockDim.y + threadIdx.y;
-        int tcol = blockIdx.x * blockDim.x + threadIdx.x;
 
-        if (trow < BATCH_SIZE && tcol < BIAS_COLS) {
-            out[trow * BIAS_COLS + tcol] =  matrix[trow * BIAS_COLS + tcol ] + bias_vec[tcol];
-        }
-     }
+#define CUDA_CHECK(call) do {                                        \
+    cudaError_t err = (call);                                        \
+    if (err != cudaSuccess) {                                        \
+        fprintf(stderr, "CUDA error %s at %s:%d\n",                  \
+                cudaGetErrorString(err), __FILE__, __LINE__);        \
+        std::abort();                                                \
+    }                                                                \
+} while (0)
 
-    constexpr int ceil_div(int a, int b) { return (a + b - 1) / b; }
+
+__global__ void bias_add_kernel(const double* a, const double* b,
+                                double* out, int rows, int cols) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int n = rows * cols;
+    if (i < n)
+        out[i] = a[i] + b[i % cols];
 }
 
-void launch_bias_add(const float* matrix, const float* bias, float* out,
-                     int rows, int cols, cudaStream_t stream) {
-    dim3 block(BX, BY);
-    dim3 grid(ceil_div(cols, BX), ceil_div(rows, BY));
-    biasAddKernel<<<grid, block, 0, stream>>>(matrix, bias, out, rows, cols);
-    //CUDA_CHECK_KERNEL();
+namespace deepc {
+
+void bias_add_fwd_gpu(const double* a, const double* b, double* out,
+                      int rows, int cols) {
+    int n = rows * cols;
+
+    double* out_d, *a_d, *b_d; // device pointers
+
+    CUDA_CHECK(cudaMalloc(&a_d, n * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&b_d, cols * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&out_d, n * sizeof(double)));
+
+    CUDA_CHECK(cudaMemcpy(a_d, a, n * sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(b_d, b, cols * sizeof(double), cudaMemcpyHostToDevice));
+
+    int block = 256;
+    int grid  = (n + block - 1) / block;   // ceil-div
+    bias_add_kernel<<<grid, block>>>(a_d, b_d, out_d, rows, cols);
+    CUDA_CHECK(cudaGetLastError());        // catch bad launch config
+
+    CUDA_CHECK(cudaMemcpy(out, out_d, n * sizeof(double), cudaMemcpyDeviceToHost));
+
+    CUDA_CHECK(cudaFree(a_d));
+    CUDA_CHECK(cudaFree(b_d));
+    CUDA_CHECK(cudaFree(out_d));
 }
+
+}
+
+
+
+
+
+
+
+
+
+
+

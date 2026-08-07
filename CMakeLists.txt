@@ -31,6 +31,7 @@ add_library(deepc STATIC
         src/gradcheck.cpp
         src/utils.cpp
         src/kernels.h
+
 )
 target_include_directories(deepc PUBLIC include)
 target_compile_definitions(deepc PUBLIC DEEPC_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
@@ -44,3 +45,6 @@ endif()
 # ---- executables ----
 add_executable(mnist apps/mnist.cpp)
 target_link_libraries(mnist PRIVATE deepc)
+
+add_executable(tests tests/kernel_correctness.cpp)
+target_link_libraries(tests PRIVATE deepc)
