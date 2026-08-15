@@ -19,12 +19,48 @@
 } while (0)
 
 
-__global__ void bias_add_kernel(const double* a, const double* b,
+__global__ void bias_add_kernel_fwd(const double* a, const double* b,
                                 double* out, int rows, int cols) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int n = rows * cols;
     if (i < n)
         out[i] = a[i] + b[i % cols];
+}
+
+
+__global__ void tiled_matrix_multiply_kernel_fwd(const double* a, const double* b, double * out,
+                                            int M, int K, int N, int TILE_WIDTH ) {
+
+    //thread specifics
+    int t_row = blockDim.y * TILE_WIDTH + threadIdx.y;
+    int t_col = blockDim.x * TILE_WIDTH + threadIdx.x;
+
+    //allocate shared mem
+    __shared__ double a_shared[TILE_WIDTH][TILE_WIDTH];
+    __shared__ double b_shared[TILE_WIDTH][TILE_WIDTH];
+
+    //compute proper number of phases
+    int n_phases = (K + TILE_WIDTH - 1) / TILE_WIDTH;
+
+
+    double psum = 0;
+    for (int phase = 0; phase < n_phases; phase++) {
+
+        // load shared memory
+        a_shared[threadIdx.y][threadIdx.x] = a[t_row * K + (TILE_WIDTH*phase + threadIdx.x)];
+        b_shared[threadIdx.y][threadIdx.x] = b[(TILE_WIDTH*phase + threadIdx.y) * N + t_col];
+        __syncthreads();
+
+        // compute from shared memory into psum
+        for (int k = 0; k < TILE_WIDTH; k++) {
+            psum += a_shared[threadIdx.y][k] * b_shared[k][threadIdx.x];
+        }
+        __syncthreads();
+
+    }
+
+    out[t_row * N + t_col] = psum;
+
 }
 
 namespace deepc {
@@ -44,7 +80,9 @@ void bias_add_fwd_gpu(const double* a, const double* b, double* out,
 
     int block = 256;
     int grid  = (n + block - 1) / block;   // ceil-div
-    bias_add_kernel<<<grid, block>>>(a_d, b_d, out_d, rows, cols);
+
+    bias_add_kernel_fwd<<<grid, block>>>(a_d, b_d, out_d, rows, cols);
+
     CUDA_CHECK(cudaGetLastError());        // catch bad launch config
 
     CUDA_CHECK(cudaMemcpy(out, out_d, n * sizeof(double), cudaMemcpyDeviceToHost));
@@ -53,6 +91,9 @@ void bias_add_fwd_gpu(const double* a, const double* b, double* out,
     CUDA_CHECK(cudaFree(b_d));
     CUDA_CHECK(cudaFree(out_d));
 }
+
+
+
 
 }
 
