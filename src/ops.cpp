@@ -104,8 +104,18 @@ namespace deepc {
         a->pending++;
         b->pending++;
 
+#ifdef DEEPC_CUDA
+        if (arena.backend == Backend::CUDA) {
+            matmul_tiled_fwd_gpu(a->data.get(), b->data.get(), out->data.get(),
+                             a->rows, a->cols, b->cols);
+        } else {
+            matmul_fwd_cpu(a->data.get(), b->data.get(), out->data.get(),
+                                        a->rows, a->cols, b->cols);
+        }
+#else
         matmul_fwd_cpu(a->data.get(), b->data.get(), out->data.get(),
                                         a->rows, a->cols, b->cols);
+#endif
 
         out->backward = [a, b, out]() {
 

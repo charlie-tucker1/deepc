@@ -9,6 +9,7 @@
 #include <random>
 #include <vector>
 
+#include "../src/kernels.h"
 #include "deepc/ops.h"
 #include "deepc/tensor.h"
 
@@ -93,14 +94,38 @@ int main() {
 
     // template for the next GPU op, e.g. matmul (use a looser tol - summation
     // order differs between backends):
-    //
-    // run_case("mul (3x5 @ 5x4)", [](deepc::GraphArena& arena, std::mt19937& rng) {
-    //     deepc::Tensor* a = arena.make(3, 5);
-    //     deepc::Tensor* b = arena.make(5, 4);
-    //     fill_random(a, rng);
-    //     fill_random(b, rng);
-    //     return deepc::mul(arena, a, b);
-    // }, 1e-9);
+
+     run_case("tiled matmul (42x80x74)", [](deepc::GraphArena& arena, std::mt19937& rng) {
+        deepc::Tensor* a = arena.make(42, 80);
+        deepc::Tensor* b = arena.make(80, 74);
+        fill_random(a, rng);
+        fill_random(b, rng);
+         return deepc::mul(arena, a, b);
+     }, 1e-9);
+
+    run_case("tiled matmul (64x64x64)", [](deepc::GraphArena& arena, std::mt19937& rng) {
+        deepc::Tensor* a = arena.make(64, 64);
+        deepc::Tensor* b = arena.make(64, 64);
+        fill_random(a, rng);
+        fill_random(b, rng);
+         return deepc::mul(arena, a, b);
+     }, 1e-9);
+
+    run_case("tiled matmul (64x128x10)", [](deepc::GraphArena& arena, std::mt19937& rng) {
+        deepc::Tensor* a = arena.make(64, 128);
+        deepc::Tensor* b = arena.make(128, 10);
+        fill_random(a, rng);
+        fill_random(b, rng);
+         return deepc::mul(arena, a, b);
+     }, 1e-9);
+
+    run_case("tiled matmul (33x17x10)", [](deepc::GraphArena& arena, std::mt19937& rng) {
+        deepc::Tensor* a = arena.make(33, 17);
+        deepc::Tensor* b = arena.make(17, 10);
+        fill_random(a, rng);
+        fill_random(b, rng);
+         return deepc::mul(arena, a, b);
+     }, 1e-9);
 
     printf("\n%d/%d cases passed\n", tests_run - tests_failed, tests_run);
     return tests_failed ? 1 : 0;

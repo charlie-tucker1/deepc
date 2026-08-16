@@ -6,5 +6,6 @@ namespace deepc {
     void bias_add_fwd_gpu(const double* a, const double* b, double* out,
                             int rows, int cols);
 
+    void matmul_tiled_fwd_gpu(const double* a, const double* b, double* out, int M, int N, int K);
 
 }
