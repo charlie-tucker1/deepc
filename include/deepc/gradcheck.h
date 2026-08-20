@@ -12,7 +12,7 @@ namespace deepc {
         std::vector<Tensor*> leaves;
     };
 
-    bool compare_grad_t(double a, double b);
+    bool compare_grad_t(float a, float b);
 
     bool tensor_gradcheck(std::function<Graph(GraphArena& arena, const std::vector<Tensor*>&)> build,
                         std::vector<Tensor*> leaves, int num_tests);

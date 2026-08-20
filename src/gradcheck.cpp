@@ -11,9 +11,9 @@ namespace deepc {
     class GraphArena;
     struct Tensor;
 
-    bool compare_grad_t(const double a, const double n) {
-        const double atol = 1e-8;
-        const double rtol = 1e-5;
+    bool compare_grad_t(const float a, const float n) {
+        const float atol = 1e-8;
+        const float rtol = 1e-5;
         return std::abs(a - n) < atol + rtol * std::max(std::abs(a), std::abs(n));
     }
 
@@ -24,7 +24,7 @@ namespace deepc {
         //No h reaches 16 digits: shrinking h trades truncation for cancellation,
         //and the floor at their crossing is ≈ 3e-11 (~11 digits). h is tuned to the valley bottom, not to eps.
 
-        const double h = 1e-5;                           // step size
+        const float h = 1e-5;                           // step size
 
         // ---- analytic side:
         GraphArena an_arena;
@@ -43,7 +43,7 @@ namespace deepc {
             std::uniform_int_distribution<int> dist_elements(0,(leaves[nudgeLeaf]->rows * leaves[nudgeLeaf]->cols) - 1);
             int nudgeIdx = dist_elements(gen);
 
-            double f_plus {0.0};
+            float f_plus {0.0};
             {
                 GraphArena plus_arena;
                 std::vector<Tensor*> plus_leaves;
@@ -56,7 +56,7 @@ namespace deepc {
                 for (int i = 0; i < fpg.L->rows * fpg.L->cols; i++) f_plus  += fpg.L->data[i];
             }
 
-            double f_minus {0.0};
+            float f_minus {0.0};
             {
                 GraphArena minus_arena;
                 std::vector<Tensor*> minus_leaves;
@@ -70,8 +70,8 @@ namespace deepc {
             }
 
 
-            double numeric  = (f_plus - f_minus) / (2 * h);
-            double analytic = g.leaves[nudgeLeaf]->grad[nudgeIdx];
+            float numeric  = (f_plus - f_minus) / (2 * h);
+            float analytic = g.leaves[nudgeLeaf]->grad[nudgeIdx];
 
             bool ok = compare_grad_t(analytic, numeric);
             all_ok = all_ok && ok;

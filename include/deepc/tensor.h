@@ -12,8 +12,8 @@ namespace deepc {
 
         Tensor(int rows, int cols);
         int rows, cols;
-        std::unique_ptr<double[]> data;
-        std::unique_ptr<double[]> grad;
+        std::unique_ptr<float[]> data;
+        std::unique_ptr<float[]> grad;
 
         int pending{0};
 

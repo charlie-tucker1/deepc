@@ -10,7 +10,7 @@ namespace deepc {
 
     Tensor* clone(GraphArena& arena, const Tensor* src);
 
-    void sgd_step(GraphArena& arena, double lr);
+    void sgd_step(GraphArena& arena, float lr);
 
     void zero_grad(GraphArena& params);
 

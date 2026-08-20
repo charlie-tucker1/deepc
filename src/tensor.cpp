@@ -7,8 +7,8 @@ namespace deepc {
 
     Tensor::Tensor(int rows, int cols)
         : rows{rows}, cols{cols},
-          data{std::make_unique<double[]>(rows * cols)},
-          grad{std::make_unique<double[]>(rows * cols)}
+          data{std::make_unique<float[]>(rows * cols)},
+          grad{std::make_unique<float[]>(rows * cols)}
     {
         alive++;
     }

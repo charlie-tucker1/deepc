@@ -17,7 +17,7 @@ namespace deepc {
 
 
 
-    void sgd_step(GraphArena& params, double lr) {
+    void sgd_step(GraphArena& params, float lr) {
         for (auto& up : params.tensors) {          // up: unique_ptr<Tensor>&
             Tensor* t = up.get();
             int n = t->rows * t->cols;
@@ -30,7 +30,7 @@ namespace deepc {
         for (auto& up : params.tensors) {          // up: unique_ptr<Tensor>&
             Tensor* t = up.get();
             int n = t->rows * t->cols;
-            std::fill(t->grad.get(), t->grad.get() + n, 0.0);
+            std::fill(t->grad.get(), t->grad.get() + n, 0.0f);
         }
     }
 

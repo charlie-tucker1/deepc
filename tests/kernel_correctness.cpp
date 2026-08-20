@@ -19,7 +19,7 @@ namespace {
     int tests_failed {0};
 
     void fill_random(deepc::Tensor* t, std::mt19937& rng) {
-        std::uniform_real_distribution<double> dist(-10.0, 10.0);
+        std::uniform_real_distribution<float> dist(-10.0, 10.0);
         for (int i = 0; i < t->rows * t->cols; i++)
             t->data[i] = dist(rng);
     }
@@ -27,7 +27,7 @@ namespace {
     // one graph-building recipe, runnable on either backend
     using OpBuilder = std::function<deepc::Tensor*(deepc::GraphArena&, std::mt19937&)>;
 
-    void run_case(const char* name, const OpBuilder& build, double tol = 1e-12) {
+    void run_case(const char* name, const OpBuilder& build, float tol = 1e-12) {
         tests_run++;
 
         std::mt19937 cpu_rng(42), gpu_rng(42); // same seed -> identical inputs
@@ -47,10 +47,10 @@ namespace {
         }
 
         int n = cpu_out->rows * cpu_out->cols;
-        double max_diff {0.0};
+        float max_diff {0.0};
         int first_bad {-1};
         for (int i = 0; i < n; i++) {
-            double d = std::fabs(cpu_out->data[i] - gpu_out->data[i]);
+            float d = std::fabs(cpu_out->data[i] - gpu_out->data[i]);
             if (d > max_diff) max_diff = d;
             if (d > tol && first_bad < 0) first_bad = i;
         }

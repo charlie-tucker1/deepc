@@ -14,24 +14,24 @@ namespace deepc {
     class GraphArena;
 
     namespace { // anon namespace to restrict linkage of cpu compute
-        void elwise_add_fwd_cpu(const double *a, const double *b, double *out, int n) {
+        void elwise_add_fwd_cpu(const float *a, const float *b, float *out, int n) {
             for (int i {0}; i < n; i++) {
                 out[i] = a[i] + b[i];
             }
         }
 
 
-        void matmul_fwd_cpu(const double* a, const double* b, double* out, int a_rows, int a_cols, int b_cols) {
+        void matmul_fwd_cpu(const float* a, const float* b, float* out, int a_rows, int a_cols, int b_cols) {
             for (int i = 0; i < a_rows; i++) {
                 for (int k = 0; k < a_cols; k++) {
-                    double av = a[i * a_cols + k];
+                    float av = a[i * a_cols + k];
                     for (int j = 0; j < b_cols; j++)
                         out[i * b_cols + j] += av * b[k * b_cols + j];
                 }
             }
         }
 
-        void bias_add_fwd_cpu(const double* a, const double* bias, double* out, const int a_cols, const int a_rows) {
+        void bias_add_fwd_cpu(const float* a, const float* bias, float* out, const int a_cols, const int a_rows) {
 
             for (int i = 0; i < a_rows; i++) {
                 for (int j = 0; j < a_cols; j++) {
@@ -143,7 +143,7 @@ namespace deepc {
         out->prev = {a};
         a->pending++;
         for (int i = 0; i < a->rows*a->cols; i++) {
-            out->data[i] = std::max(a->data[i], 0.0);
+            out->data[i] = std::max(a->data[i], 0.0f);
         }
 
         out->backward = [a, out]() {
@@ -164,19 +164,19 @@ namespace deepc {
         loss->prev = {logits};
         logits->pending++;
 
-        std::vector<double> row_ms;
-        std::vector<double> row_psums;
+        std::vector<float> row_ms;
+        std::vector<float> row_psums;
 
         for (int i = 0; i < labels.size(); ++i) {
 
-            double* start = &logits->data[i * logits->cols];
-            double* end = &logits->data[i * logits->cols + logits->cols];
-            double m = *std::max_element(start, end);
+            float* start = &logits->data[i * logits->cols];
+            float* end = &logits->data[i * logits->cols + logits->cols];
+            float m = *std::max_element(start, end);
 
             row_ms.emplace_back(m);
 
-            double log_softmax = (logits->data[i * logits->cols + labels[i]] - m);
-            double psum = 0.0;
+            float log_softmax = (logits->data[i * logits->cols + labels[i]] - m);
+            float psum = 0.0;
             for (int j{0}; j < logits->cols; j++) {
                 psum += std::exp(logits->data[i * logits->cols + j] - m);
             }

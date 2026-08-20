@@ -7,7 +7,6 @@
 #include <cstdio>
 #include "cuda_runtime.h"
 #include "../src/kernels.h"
-#define TILE_WIDTH_MM 16
 
 
 #define CUDA_CHECK(call) do {                                        \
@@ -20,8 +19,8 @@
 } while (0)
 
 
-__global__ void bias_add_kernel_fwd(const double* a, const double* b,
-                                double* out, int rows, int cols) {
+__global__ void bias_add_kernel_fwd(const float* a, const float* b,
+                                float* out, int rows, int cols) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int n = rows * cols;
     if (i < n)
@@ -29,7 +28,8 @@ __global__ void bias_add_kernel_fwd(const double* a, const double* b,
 }
 
 
-__global__ void tiled_matrix_multiply_kernel_fwd(const double* a, const double* b, double * out,
+
+__global__ void tiled_matrix_multiply_kernel_fwd(const float* a, const float* b, float * out,
                                             int M, int K, int N) {
 
     //thread specifics
@@ -37,14 +37,14 @@ __global__ void tiled_matrix_multiply_kernel_fwd(const double* a, const double* 
     int t_col = blockIdx.x * TILE_WIDTH_MM + threadIdx.x;
 
     //allocate shared mem
-    __shared__ double a_shared[TILE_WIDTH_MM][TILE_WIDTH_MM];
-    __shared__ double b_shared[TILE_WIDTH_MM][TILE_WIDTH_MM];
+    __shared__ float a_shared[TILE_WIDTH_MM][TILE_WIDTH_MM];
+    __shared__ float b_shared[TILE_WIDTH_MM][TILE_WIDTH_MM];
 
     //compute proper number of phases
     int n_phases = (K + TILE_WIDTH_MM - 1) / TILE_WIDTH_MM;
 
 
-    double psum = 0;
+    float psum = 0;
     for (int phase = 0; phase < n_phases; phase++) {
 
         // load shared memory
@@ -77,18 +77,18 @@ __global__ void tiled_matrix_multiply_kernel_fwd(const double* a, const double* 
 
 namespace deepc {
 
-void bias_add_fwd_gpu(const double* a, const double* b, double* out,
+void bias_add_fwd_gpu(const float* a, const float* b, float* out,
                       int rows, int cols) {
     int n = rows * cols;
 
-    double* out_d, *a_d, *b_d; // device pointers
+    float* out_d, *a_d, *b_d; // device pointers
 
-    CUDA_CHECK(cudaMalloc(&a_d, n * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&b_d, cols * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&out_d, n * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&a_d, n * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&b_d, cols * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&out_d, n * sizeof(float)));
 
-    CUDA_CHECK(cudaMemcpy(a_d, a, n * sizeof(double), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(b_d, b, cols * sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(a_d, a, n * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(b_d, b, cols * sizeof(float), cudaMemcpyHostToDevice));
 
     int block = 256;
     int grid  = (n + block - 1) / block;   // ceil-div
@@ -97,7 +97,7 @@ void bias_add_fwd_gpu(const double* a, const double* b, double* out,
 
     CUDA_CHECK(cudaGetLastError());        // catch bad launch config
 
-    CUDA_CHECK(cudaMemcpy(out, out_d, n * sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(out, out_d, n * sizeof(float), cudaMemcpyDeviceToHost));
 
     CUDA_CHECK(cudaFree(a_d));
     CUDA_CHECK(cudaFree(b_d));

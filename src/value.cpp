@@ -10,7 +10,7 @@
 
 
 
-using Scalar = double;
+using Scalar = float;
 
 
 
@@ -18,7 +18,7 @@ using Scalar = double;
 
 struct value {
 
-    value(double x) : data{x} {alive++;}
+    value(float x) : data{x} {alive++;}
     Scalar data;
     Scalar grad {0.0};
     int pending {0};
@@ -38,7 +38,7 @@ class GraphContext {
 public :
     std::vector<std::unique_ptr<value>> nodes;
 
-    value* make(double data) {
+    value* make(float data) {
         nodes.emplace_back(std::make_unique<value>(data));
         return nodes.back().get();
     }
@@ -116,7 +116,7 @@ value* log(GraphContext& arena, value* a) {
     return out;
 }
 
-value* pow(GraphContext& arena, value* a, double raise) {
+value* pow(GraphContext& arena, value* a, float raise) {
     value* out = arena.make(std::pow(a->data, raise) );
     out->prev = {a};
     a->pending++;
@@ -177,21 +177,21 @@ struct Graph {
     std::vector<value*> leaves;
 };
 
-bool compare_grad(double a, double n) {
-    const double atol = 1e-8;
-    const double rtol = 1e-5;
+bool compare_grad(float a, float n) {
+    const float atol = 1e-8;
+    const float rtol = 1e-5;
     return std::abs(a - n) < atol + rtol * std::max(std::abs(a), std::abs(n));
 }
 
 
-bool gradcheck(std::function<Graph(GraphContext&, const std::vector<double>&)> build,
-               std::vector<double> xs)
+bool gradcheck(std::function<Graph(GraphContext&, const std::vector<float>&)> build,
+               std::vector<float> xs)
 {
 
     //No h reaches 16 digits: shrinking h trades truncation for cancellation,
     //and the floor at their crossing is ≈ 3e-11 (~11 digits). h is tuned to the valley bottom, not to eps.
 
-    const double h = 1e-5;                       // step size
+    const float h = 1e-5;                       // step size
 
     // ---- analytic side:
     GraphContext gc_arena;
@@ -201,22 +201,22 @@ bool gradcheck(std::function<Graph(GraphContext&, const std::vector<double>&)> b
     bool all_ok = true;
     for (size_t i = 0; i < xs.size(); ++i) {
         // ---- numeric side for leaf i:
-        std::vector<double> xph = xs;  xph[i] += h;
-        std::vector<double> xmh = xs;  xmh[i] -= h;
+        std::vector<float> xph = xs;  xph[i] += h;
+        std::vector<float> xmh = xs;  xmh[i] -= h;
 
-        double f_plus;
+        float f_plus;
         {
             GraphContext plus_arena;
             f_plus  = build(plus_arena, xph).L->data;
         }
 
-        double f_minus;
+        float f_minus;
         {
             GraphContext minus_arena;
             f_minus  = build(minus_arena, xmh).L->data;
         }
-        double numeric  = (f_plus - f_minus) / (2 * h);
-        double analytic = g.leaves[i]->grad;
+        float numeric  = (f_plus - f_minus) / (2 * h);
+        float analytic = g.leaves[i]->grad;
 
         bool ok = compare_grad(analytic, numeric);
         all_ok = all_ok && ok;
@@ -240,7 +240,7 @@ int main() {
 
 
     // Testing add(), mul(), sub(), and exp() in 'build'
-    auto build = [](GraphContext& arena, const std::vector<double>& xs) {
+    auto build = [](GraphContext& arena, const std::vector<float>& xs) {
         Value* a_check = arena.make(xs[0]);
         Value* b_check = arena.make(xs[1]);
         Value* k_check = arena.make(xs[2]);
@@ -265,7 +265,7 @@ int main() {
     assert(Value::alive == 0);
 
     // Testing leaf -> exp() -> out in 'build2'
-    auto build2 = [](GraphContext& arena2,  const std::vector<double>& xs) {
+    auto build2 = [](GraphContext& arena2,  const std::vector<float>& xs) {
         Value* a2_check = arena2.make(xs[0]);
         Value* L2_check = exp(arena2, a2_check);
         return Graph{L2_check, {a2_check}};
@@ -276,7 +276,7 @@ int main() {
     assert(Value::alive == 0);
 
     // Test leaf -> tanh() -> out in build3
-    auto build3 = [](GraphContext& arena3, const std::vector<double>& xs) {
+    auto build3 = [](GraphContext& arena3, const std::vector<float>& xs) {
         Value* a3_check = arena3.make(xs[0]);
         Value* L3_check = tanh(arena3, a3_check);
         return Graph{L3_check, {a3_check}};
@@ -286,7 +286,7 @@ int main() {
 
     assert(Value::alive == 0);
 
-    auto build4 = [](GraphContext& arena4, const std::vector<double>& xs) {
+    auto build4 = [](GraphContext& arena4, const std::vector<float>& xs) {
         Value* a4_check = arena4.make(xs[0]);
         Value* L4_check = relu(arena4, a4_check);
         return Graph{L4_check, {a4_check}};
