@@ -28,7 +28,6 @@ namespace deepc {
     class GraphArena {
     public:
         std::vector<std::unique_ptr<Tensor>> tensors; //unique pointers manage graph memory lifespan/ownership
-
         Backend backend = Backend::CPU;
 
         Tensor* make(int rows, int cols);

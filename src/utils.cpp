@@ -16,7 +16,6 @@ namespace deepc {
     }
 
 
-
     void sgd_step(GraphArena& params, float lr) {
         for (auto& up : params.tensors) {          // up: unique_ptr<Tensor>&
             Tensor* t = up.get();
@@ -50,4 +49,7 @@ namespace deepc {
             }
         }
     }
+
+
+
 }

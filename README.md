@@ -92,6 +92,6 @@ t10k-images.idx3-ubyte     t10k-labels.idx1-ubyte
 ## Roadmap
 
 - **CUDA backend** — port forward/backward matmul to the GPU (RTX 5070), batch dimension mapped to the grid. The CPU table above is the baseline.
+- Refactor & create general SupervisedDataset class to facilitate storing and organizing supervised data
 - Per-phase segment timing (forward / backward / optimizer) to decompose the training-time budget.
 - Per-epoch shuffle in the training loop.
-- Batched inference path (current eval runs B=1; correctness-identical, just slower than it needs to be).

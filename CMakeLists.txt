@@ -31,6 +31,7 @@ add_library(deepc STATIC
         src/gradcheck.cpp
         src/utils.cpp
         src/kernels.h
+        src/supervised_dataset.cpp
 
 )
 target_include_directories(deepc PUBLIC include)
