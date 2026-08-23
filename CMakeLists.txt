@@ -25,7 +25,6 @@ endif()
 # ---- engine library ----
 add_library(deepc STATIC
         src/tensor.cpp
-        src/value.cpp
         src/ops.cpp
         src/mnist_loader.cpp
         src/gradcheck.cpp

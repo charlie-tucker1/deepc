@@ -5,8 +5,11 @@
 // output dimensions == input dimensions
 
 #include <cstdio>
+#include <cstdlib>
 #include "cuda_runtime.h"
 #include "../src/kernels.h"
+
+#define TILE_WIDTH_MM 16
 
 
 #define CUDA_CHECK(call) do {                                        \
@@ -104,19 +107,19 @@ void bias_add_fwd_gpu(const float* a, const float* b, float* out,
     CUDA_CHECK(cudaFree(out_d));
 }
 
-void matmul_tiled_fwd_gpu(const double* a, const double* b, double* out,
+void matmul_tiled_fwd_gpu(const float* a, const float* b, float* out,
                             int M, int K, int N) {
     int elems_A = M * K;
     int elems_B = N * K;
 
-    double* out_d, *a_d, *b_d; // device pointers
+    float* out_d, *a_d, *b_d; // device pointers
 
-    CUDA_CHECK(cudaMalloc(&a_d, elems_A * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&b_d, elems_B * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&out_d, M*N * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&a_d, elems_A * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&b_d, elems_B * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&out_d, M*N * sizeof(float)));
 
-    CUDA_CHECK(cudaMemcpy(a_d, a, elems_A * sizeof(double), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(b_d, b, elems_B * sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(a_d, a, elems_A * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(b_d, b, elems_B * sizeof(float), cudaMemcpyHostToDevice));
 
     dim3 block = dim3(TILE_WIDTH_MM, TILE_WIDTH_MM);
     dim3 grid  = dim3((N + TILE_WIDTH_MM - 1) / TILE_WIDTH_MM,
@@ -126,7 +129,7 @@ void matmul_tiled_fwd_gpu(const double* a, const double* b, double* out,
 
     CUDA_CHECK(cudaGetLastError());        // catch bad launch config
 
-    CUDA_CHECK(cudaMemcpy(out, out_d, M*N * sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(out, out_d, M*N * sizeof(float), cudaMemcpyDeviceToHost));
 
     CUDA_CHECK(cudaFree(a_d));
     CUDA_CHECK(cudaFree(b_d));

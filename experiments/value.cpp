@@ -1,3 +1,9 @@
+// The original scalar autograd prototype ("first steps"): a scalar `value` node,
+// GraphContext arena, scalar ops, the pending-count `backwards`, and the scalar
+// gradcheck harness. The Tensor engine in src/ is a direct generalisation of this
+// file. Kept for reference; NOT part of the build (moved out of the library so its
+// global-namespace symbols (mul, add, exp, backwards, ...) can't collide).
+
 #include <iostream>
 #include <vector>
 #include <functional>
