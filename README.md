@@ -2,7 +2,7 @@
 
 A from-scratch neural network training engine in C++. No frameworks, no BLAS, no dependencies beyond the standard library. Every op, gradient, and memory-ownership decision is handwritten and verified by numerical gradient checking.
 
-Current status: **MNIST MLP trains end-to-end on CPU to 95%+ test accuracy.** Next phase: CUDA backend targeting an RTX 5070.
+Current status: **MNIST MLP trains end-to-end on CPU to 95%+ test accuracy.** CUDA port in progress. 
 
 The point of the project is not MNIST. The point is building all the fundamental deep learning machinery by hand: tensor storage, computational graph construction, reverse-mode autodiff, optimizer, data pipeline, and gradcheck. Then moving the computational layer to CUDA.
 
